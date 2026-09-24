@@ -743,6 +743,7 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
         else if (prefConfig.enablePyroWave && !willStreamHdr) {
             Toast.makeText(this, "This device cannot decode PyroWave (needs a 64-bit Vulkan 1.3 GPU)", Toast.LENGTH_LONG).show();
         }
+        decoderRenderer.setPyroWaveOffered(offerPyroWave);
 
         int gamepadMask = ControllerHandler.getAttachedControllerMask(this);
         if (!prefConfig.multiController) {

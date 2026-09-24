@@ -485,6 +485,13 @@ public class MediaCodecDecoderRenderer extends VideoDecoderRenderer implements C
         return PyroWaveDecoderRenderer.isAvailable();
     }
 
+    // Set before the connection starts when the client offers PyroWave.
+    private boolean pyroWaveOffered;
+
+    public void setPyroWaveOffered(boolean offered) {
+        pyroWaveOffered = offered;
+    }
+
     public boolean isAv1Supported() {
         return av1Decoder != null;
     }
@@ -2302,8 +2309,10 @@ public class MediaCodecDecoderRenderer extends VideoDecoderRenderer implements C
             capabilities |= MoonBridge.CAPABILITY_REFERENCE_FRAME_INVALIDATION_AV1;
         }
 
-        // Enable direct submit on supported hardware
-        if (directSubmit) {
+        // Enable direct submit on supported hardware. Not when PyroWave may be negotiated:
+        // direct submit decodes on the network receive thread, and at PyroWave's packet
+        // rates that thread must do nothing but drain the socket.
+        if (directSubmit && !pyroWaveOffered) {
             capabilities |= MoonBridge.CAPABILITY_DIRECT_SUBMIT;
         }
 

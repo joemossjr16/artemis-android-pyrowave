@@ -19,7 +19,6 @@
 #include <android/native_window_jni.h>
 #include <dlfcn.h>
 #include <time.h>
-#include <unistd.h>
 #include <jni.h>
 
 #include <algorithm>
@@ -251,79 +250,6 @@ namespace {
             default: return "other";
         }
     }
-
-    // Android performance hints (ADPF). Telling the platform the per-frame deadline and
-    // the actual CPU and GPU time keeps the decode thread and GPU clocked for the
-    // stream instead of letting the governors down-clock between frames.
-    class PerformanceHint {
-    public:
-        ~PerformanceHint() {
-            if (session != nullptr && closeSession != nullptr) {
-                closeSession(session);
-            }
-        }
-
-        void start(int64_t targetNs) {
-            void *lib = dlopen("libandroid.so", RTLD_NOW | RTLD_LOCAL);
-            if (lib == nullptr) {
-                return;
-            }
-            auto getManager = reinterpret_cast<void *(*)()>(dlsym(lib, "APerformanceHint_getManager"));
-            auto createSession = reinterpret_cast<void *(*)(void *, const int32_t *, size_t, int64_t)>(
-                dlsym(lib, "APerformanceHint_createSession"));
-            closeSession = reinterpret_cast<void (*)(void *)>(dlsym(lib, "APerformanceHint_closeSession"));
-            report = reinterpret_cast<int (*)(void *, int64_t)>(dlsym(lib, "APerformanceHint_reportActualWorkDuration"));
-            report2 = reinterpret_cast<int (*)(void *, void *)>(dlsym(lib, "APerformanceHint_reportActualWorkDuration2"));
-            createWork = reinterpret_cast<void *(*)()>(dlsym(lib, "AWorkDuration_create"));
-            setStart = reinterpret_cast<void (*)(void *, int64_t)>(dlsym(lib, "AWorkDuration_setWorkPeriodStartTimestampNanos"));
-            setTotal = reinterpret_cast<void (*)(void *, int64_t)>(dlsym(lib, "AWorkDuration_setActualTotalDurationNanos"));
-            setCpu = reinterpret_cast<void (*)(void *, int64_t)>(dlsym(lib, "AWorkDuration_setActualCpuDurationNanos"));
-            setGpu = reinterpret_cast<void (*)(void *, int64_t)>(dlsym(lib, "AWorkDuration_setActualGpuDurationNanos"));
-            if (getManager == nullptr || createSession == nullptr || closeSession == nullptr || report == nullptr) {
-                LOGI("Performance hints unavailable on this Android version");
-                return;
-            }
-            void *manager = getManager();
-            const int32_t tid = gettid();
-            session = manager != nullptr ? createSession(manager, &tid, 1, targetNs) : nullptr;
-            gpuHints = session != nullptr && report2 != nullptr && createWork != nullptr && setStart != nullptr &&
-                       setTotal != nullptr && setCpu != nullptr && setGpu != nullptr;
-            if (gpuHints) {
-                work = createWork();
-                gpuHints = work != nullptr;
-            }
-            LOGI("Performance hint session %s (target %.2f ms, GPU hints %s)", session != nullptr ? "on" : "unavailable",
-                 targetNs / 1e6, gpuHints ? "on" : "off");
-        }
-
-        void reportFrame(int64_t startNs, int64_t cpuNs, int64_t gpuNs) {
-            if (session == nullptr || cpuNs <= 0) {
-                return;
-            }
-            if (gpuHints && gpuNs > 0) {
-                setStart(work, startNs);
-                setCpu(work, cpuNs);
-                setGpu(work, gpuNs);
-                setTotal(work, cpuNs + gpuNs);
-                report2(session, work);
-            } else {
-                report(session, cpuNs + gpuNs);
-            }
-        }
-
-    private:
-        void *session = nullptr;
-        void *work = nullptr;  // Released with the process; AWorkDuration objects are tiny.
-        bool gpuHints = false;
-        void (*closeSession)(void *) = nullptr;
-        int (*report)(void *, int64_t) = nullptr;
-        int (*report2)(void *, void *) = nullptr;
-        void *(*createWork)() = nullptr;
-        void (*setStart)(void *, int64_t) = nullptr;
-        void (*setTotal)(void *, int64_t) = nullptr;
-        void (*setCpu)(void *, int64_t) = nullptr;
-        void (*setGpu)(void *, int64_t) = nullptr;
-    };
 
     uint32_t readBe32(const uint8_t *p) {
         return (uint32_t(p[0]) << 24) | (uint32_t(p[1]) << 16) | (uint32_t(p[2]) << 8) | uint32_t(p[3]);
@@ -980,11 +906,6 @@ namespace {
 
         bool present() {
             const uint64_t frameStart = nowUs();
-            if (!hintStarted) {
-                // Created on the decode thread, which is the thread being hinted.
-                hintStarted = true;
-                hint.start(int64_t(1'000'000'000LL / frameRateHz));
-            }
 
             // One frame in flight: after this wait the previous frame's sampling of the
             // planes is finished, so decoding may overwrite them.
@@ -1121,10 +1042,6 @@ namespace {
             const auto presented = vk.QueuePresentKHR(queue, &presentInfo);
             const uint64_t frameEnd = nowUs();
 
-            // CPU time spent on this frame, excluding waits on the GPU and the display.
-            lastFrameStartUs = frameStart;
-            lastFrameCpuUs = (frameEnd - frameStart) - (afterFence - frameStart) - (afterAcquire - beforeAcquire);
-
             stats.frames++;
             stats.fenceWaitUs += afterFence - frameStart;
             stats.acquireWaitUs += afterAcquire - beforeAcquire;
@@ -1240,10 +1157,7 @@ namespace {
         VkQueryPool queryPool = VK_NULL_HANDLE;
         bool timestampsSupported = false;
         int frameRateHz = 60;
-        PerformanceHint hint;
-        bool hintStarted = false;
-        uint64_t lastFrameStartUs = 0;
-        uint64_t lastFrameCpuUs = 0;
+
         bool queriesPending = false;
         float timestampPeriodNs = 1.0f;
 
@@ -1275,8 +1189,6 @@ namespace {
             }
             const auto toUs = [this](uint64_t delta) { return uint64_t(double(delta) * timestampPeriodNs / 1000.0); };
             lastGpuDecodeUs = uint32_t(toUs(ticks[1] - ticks[0]));
-            hint.reportFrame(int64_t(lastFrameStartUs) * 1000, int64_t(lastFrameCpuUs) * 1000,
-                             int64_t(toUs(ticks[2] - ticks[0])) * 1000);
             stats.gpuDecodeUs += lastGpuDecodeUs;
             stats.gpuDrawUs += toUs(ticks[2] - ticks[1]);
             stats.gpuSamples++;
