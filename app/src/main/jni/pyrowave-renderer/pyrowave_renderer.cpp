@@ -652,6 +652,22 @@ namespace {
             renderDone.clear();
         }
 
+        // Checks at most every SIZE_CHECK_INTERVAL_US whether the surface extent differs
+        // from the swapchain's.
+        bool surfaceSizeChanged(uint64_t now) {
+            constexpr uint64_t SIZE_CHECK_INTERVAL_US = 250'000;
+            if (now - lastSizeCheckUs < SIZE_CHECK_INTERVAL_US) {
+                return false;
+            }
+            lastSizeCheckUs = now;
+            VkSurfaceCapabilitiesKHR caps;
+            if (vk.GetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, surface, &caps) != VK_SUCCESS) {
+                return false;
+            }
+            return caps.currentExtent.width != swapchainExtent.width ||
+                   caps.currentExtent.height != swapchainExtent.height;
+        }
+
         bool recreateSwapchain() {
             vk.DeviceWaitIdle(device);
             return createSwapchain();
@@ -1048,10 +1064,16 @@ namespace {
             stats.presentUs += frameEnd - afterAcquire;
             logStatsIfDue(frameEnd);
 
-            if (presented == VK_ERROR_OUT_OF_DATE_KHR || presented == VK_SUBOPTIMAL_KHR || acquired == VK_SUBOPTIMAL_KHR) {
+            if (presented == VK_ERROR_OUT_OF_DATE_KHR) {
                 return recreateSwapchain();
             }
-            return check(presented, "vkQueuePresentKHR");
+            // SUBOPTIMAL is reported on every present while the display is rotated, because
+            // the swapchain leaves rotation to the compositor (IDENTITY pre-transform). Only
+            // a changed surface size needs a new swapchain; recreating per frame stalls the GPU.
+            if ((presented == VK_SUBOPTIMAL_KHR || acquired == VK_SUBOPTIMAL_KHR) && surfaceSizeChanged(frameEnd)) {
+                return recreateSwapchain();
+            }
+            return presented == VK_SUBOPTIMAL_KHR || check(presented, "vkQueuePresentKHR");
         }
 
         void destroy() {
@@ -1126,6 +1148,7 @@ namespace {
         Plane planes[3];
         bool planesInitialized = false;
         bool fragmentPath = false;
+        uint64_t lastSizeCheckUs = 0;
 
         VkFormat swapchainFormat = VK_FORMAT_UNDEFINED;
         VkColorSpaceKHR swapchainColorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
