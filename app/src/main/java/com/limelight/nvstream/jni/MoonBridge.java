@@ -20,6 +20,8 @@ public class MoonBridge {
     public static final int VIDEO_FORMAT_MASK_H264 = 0x000F;
     public static final int VIDEO_FORMAT_MASK_H265 = 0x0F00;
     public static final int VIDEO_FORMAT_MASK_AV1 = 0xF000;
+    public static final int VIDEO_FORMAT_PYROWAVE = 0x10000; // PyroWave intra-only wavelet codec (Moonlight extension)
+    public static final int VIDEO_FORMAT_MASK_PYROWAVE = VIDEO_FORMAT_PYROWAVE;
     public static final int VIDEO_FORMAT_MASK_10BIT = 0x2200;
 
     public static final int BUFFER_TYPE_PICDATA = 0;

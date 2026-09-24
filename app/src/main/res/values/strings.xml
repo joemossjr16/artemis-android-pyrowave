@@ -306,6 +306,8 @@
     <string name="summary_video_format">Newer codecs can lower video bandwidth requirements if your device supports them. Codec selections may be ignored if not supported by the host software or GPU.</string>
     <string name="title_enable_hdr">Enable HDR (Experimental)</string>
     <string name="summary_enable_hdr">Stream HDR when the game and PC GPU support it. HDR requires a GPU with HEVC Main 10 encoding support.</string>
+    <string name="title_enable_pyrowave">Use PyroWave on fast local networks (Experimental)</string>
+    <string name="summary_enable_pyrowave">Offer the PyroWave codec to hosts that support it. It needs a very high bitrate (about 200 Mbps at 1080p60, more at higher resolutions and frame rates). Requires a 64-bit device with a Vulkan 1.3 GPU. SDR only.</string>
     <string name="title_full_range">Force full range video (Experimental)</string>
     <string name="summary_full_range">This will cause loss of detail in light and dark areas if your device doesn\'t properly display full range video content.</string>
     <string name="title_prevent_packet_loss">Prevent Packet Loss</string>

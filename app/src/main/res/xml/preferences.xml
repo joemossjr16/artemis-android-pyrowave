@@ -28,7 +28,7 @@
         <com.limelight.preferences.SeekBarPreference
             android:dialogMessage="@string/summary_seekbar_bitrate"
             android:key="seekbar_bitrate_kbps"
-            android:max="300000"
+            android:max="800000"
             android:summary="@string/summary_seekbar_bitrate"
             android:text="@string/suffix_seekbar_bitrate_mbps"
             android:title="@string/title_seekbar_bitrate"
@@ -209,6 +209,12 @@
             android:key="checkbox_enable_hdr"
             android:summary="@string/summary_enable_hdr"
             android:title="@string/title_enable_hdr"
+            app:iconSpaceReserved="false" />
+        <CheckBoxPreference
+            android:defaultValue="false"
+            android:key="checkbox_enable_pyrowave"
+            android:summary="@string/summary_enable_pyrowave"
+            android:title="@string/title_enable_pyrowave"
             app:iconSpaceReserved="false" />
 
         <CheckBoxPreference

@@ -734,6 +734,16 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
             }
         }
 
+        // PyroWave is opt-in and SDR only. The host selects it only if it offers PyroWave
+        // too; otherwise the stream uses one of the codecs above.
+        boolean offerPyroWave = prefConfig.enablePyroWave && !willStreamHdr && decoderRenderer.isPyroWaveSupported();
+        if (offerPyroWave) {
+            supportedVideoFormats |= MoonBridge.VIDEO_FORMAT_PYROWAVE;
+        }
+        else if (prefConfig.enablePyroWave && !willStreamHdr) {
+            Toast.makeText(this, "This device cannot decode PyroWave (needs a 64-bit Vulkan 1.3 GPU)", Toast.LENGTH_LONG).show();
+        }
+
         int gamepadMask = ControllerHandler.getAttachedControllerMask(this);
         if (!prefConfig.multiController) {
             // Always set gamepad 1 present for when multi-controller is
@@ -796,8 +806,10 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
                 .setAttachedGamepadMask(gamepadMask)
                 .setClientRefreshRateX100((int)(displayRefreshRate * 100))
                 .setAudioConfiguration(prefConfig.audioConfiguration)
-                .setColorSpace(decoderRenderer.getPreferredColorSpace())
-                .setColorRange(decoderRenderer.getPreferredColorRange())
+                // The PyroWave renderer converts limited-range BT.709, so request that
+                // whenever PyroWave may be negotiated.
+                .setColorSpace(offerPyroWave ? MoonBridge.COLORSPACE_REC_709 : decoderRenderer.getPreferredColorSpace())
+                .setColorRange(offerPyroWave ? MoonBridge.COLOR_RANGE_LIMITED : decoderRenderer.getPreferredColorRange())
                 .setPersistGamepadsAfterDisconnect(!prefConfig.multiController)
                 .build();
 
