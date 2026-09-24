@@ -44,12 +44,12 @@ public class PyroWaveDecoderRenderer {
         return LIBRARY_LOADED && nativeIsAvailable();
     }
 
-    public boolean setup(Surface surface, int width, int height, int frameRate) {
+    public boolean setup(Surface surface, int width, int height, int frameRate, boolean chroma444) {
         cleanup();
         if (!LIBRARY_LOADED || surface == null || !surface.isValid()) {
             return false;
         }
-        handle = nativeCreate(surface, width, height, frameRate);
+        handle = nativeCreate(surface, width, height, frameRate, chroma444);
         return handle != 0;
     }
 
@@ -77,7 +77,7 @@ public class PyroWaveDecoderRenderer {
     }
 
     private static native boolean nativeIsAvailable();
-    private static native long nativeCreate(Surface surface, int width, int height, int frameRate);
+    private static native long nativeCreate(Surface surface, int width, int height, int frameRate, boolean chroma444);
     private static native int nativeSubmitFrame(long handle, byte[] data, int length);
     private static native int nativeGetLastGpuDecodeUs(long handle);
     private static native void nativeDestroy(long handle);

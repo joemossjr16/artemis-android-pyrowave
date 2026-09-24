@@ -820,13 +820,14 @@ public class MediaCodecDecoderRenderer extends VideoDecoderRenderer implements C
 
         if ((format & MoonBridge.VIDEO_FORMAT_MASK_PYROWAVE) != 0) {
             pyroWaveRenderer = new PyroWaveDecoderRenderer();
-            if (!pyroWaveRenderer.setup(renderTarget, width, height, redrawRate)) {
+            boolean chroma444 = (format & MoonBridge.VIDEO_FORMAT_PYROWAVE_444) != 0;
+            if (!pyroWaveRenderer.setup(renderTarget, width, height, redrawRate, chroma444)) {
                 LimeLog.severe("PyroWave renderer initialization failed");
                 pyroWaveRenderer.cleanup();
                 pyroWaveRenderer = null;
                 return -1;
             }
-            LimeLog.info("Using PyroWave Vulkan renderer for " + width + "x" + height);
+            LimeLog.info("Using PyroWave Vulkan renderer for " + width + "x" + height + (chroma444 ? " 4:4:4" : " 4:2:0"));
             return 0;
         }
 
@@ -1830,7 +1831,8 @@ public class MediaCodecDecoderRenderer extends VideoDecoderRenderer implements C
                 } else if ((videoFormat & MoonBridge.VIDEO_FORMAT_MASK_AV1) != 0) {
                     decoder = av1Decoder.getName();
                 } else if ((videoFormat & MoonBridge.VIDEO_FORMAT_MASK_PYROWAVE) != 0) {
-                    decoder = "PyroWave (Vulkan)";
+                    decoder = (videoFormat & MoonBridge.VIDEO_FORMAT_PYROWAVE_444) != 0 ?
+                            "PyroWave 4:4:4 (Vulkan)" : "PyroWave (Vulkan)";
                 } else {
                     decoder = "(unknown)";
                 }

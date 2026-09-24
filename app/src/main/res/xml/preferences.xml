@@ -216,6 +216,13 @@
             android:summary="@string/summary_enable_pyrowave"
             android:title="@string/title_enable_pyrowave"
             app:iconSpaceReserved="false" />
+        <CheckBoxPreference
+            android:defaultValue="false"
+            android:dependency="checkbox_enable_pyrowave"
+            android:key="checkbox_pyrowave_444"
+            android:summary="@string/summary_pyrowave_444"
+            android:title="@string/title_pyrowave_444"
+            app:iconSpaceReserved="false" />
 
         <CheckBoxPreference
             android:defaultValue="false"

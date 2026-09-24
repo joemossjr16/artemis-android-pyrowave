@@ -270,8 +270,9 @@ namespace {
             destroy();
         }
 
-        bool create(ANativeWindow *nativeWindow, int streamWidth, int streamHeight, int frameRate) {
+        bool create(ANativeWindow *nativeWindow, int streamWidth, int streamHeight, int frameRate, bool fullChroma) {
             window = nativeWindow;
+            chroma444 = fullChroma;
             frameRateHz = frameRate > 0 ? frameRate : 60;
             width = uint32_t(streamWidth);
             height = uint32_t(streamHeight);
@@ -469,7 +470,7 @@ namespace {
             decoderInfo.device = pyroDevice;
             decoderInfo.width = int(width);
             decoderInfo.height = int(height);
-            decoderInfo.chroma = PYROWAVE_CHROMA_SUBSAMPLING_420;
+            decoderInfo.chroma = chroma444 ? PYROWAVE_CHROMA_SUBSAMPLING_444 : PYROWAVE_CHROMA_SUBSAMPLING_420;
             // The decoder writes the planes (as storage images or render targets) and the
             // CSC pass samples them directly.
             decoderInfo.fragment_path = fragmentPath;
@@ -535,9 +536,13 @@ namespace {
         }
 
         bool createPlanes() {
+            // The CSC shader samples chroma with normalised coordinates, so full-size
+            // (4:4:4) planes need no shader change; its siting offset turns itself off.
+            const uint32_t chromaWidth = chroma444 ? width : width / 2;
+            const uint32_t chromaHeight = chroma444 ? height : height / 2;
             return createPlane(planes[0], width, height) &&
-                   createPlane(planes[1], width / 2, height / 2) &&
-                   createPlane(planes[2], width / 2, height / 2);
+                   createPlane(planes[1], chromaWidth, chromaHeight) &&
+                   createPlane(planes[2], chromaWidth, chromaHeight);
         }
 
         bool createSwapchain() {
@@ -1145,6 +1150,7 @@ namespace {
         ANativeWindow *window = nullptr;
         uint32_t width = 0;
         uint32_t height = 0;
+        bool chroma444 = false;
 
         // Kept alive for PyroWave, which reads the create infos after device creation.
         VkApplicationInfo appInfo = {};
@@ -1324,9 +1330,10 @@ Java_com_limelight_binding_video_PyroWaveDecoderRenderer_nativeIsAvailable(JNIEn
 
 JNIEXPORT jlong JNICALL
 Java_com_limelight_binding_video_PyroWaveDecoderRenderer_nativeCreate(JNIEnv *env, jclass, jobject surface,
-                                                                      jint width, jint height, jint frameRate) {
-    if (surface == nullptr || width <= 0 || height <= 0 || (width & 1) || (height & 1)) {
-        LOGE("PyroWave needs a surface and positive, even dimensions (%dx%d)", width, height);
+                                                                      jint width, jint height, jint frameRate,
+                                                                      jboolean chroma444) {
+    if (surface == nullptr || width <= 0 || height <= 0 || (!chroma444 && ((width & 1) || (height & 1)))) {
+        LOGE("PyroWave needs a surface and positive dimensions, even for 4:2:0 (%dx%d)", width, height);
         return 0;
     }
     ANativeWindow *window = ANativeWindow_fromSurface(env, surface);
@@ -1334,10 +1341,10 @@ Java_com_limelight_binding_video_PyroWaveDecoderRenderer_nativeCreate(JNIEnv *en
         return 0;
     }
     auto renderer = std::make_unique<Renderer>();
-    if (!renderer->create(window, width, height, frameRate)) {
+    if (!renderer->create(window, width, height, frameRate, chroma444)) {
         return 0;  // The renderer releases the window.
     }
-    LOGI("PyroWave renderer ready for %dx%d", width, height);
+    LOGI("PyroWave renderer ready for %dx%d %s", width, height, chroma444 ? "4:4:4" : "4:2:0");
     return reinterpret_cast<jlong>(renderer.release());
 }
 
