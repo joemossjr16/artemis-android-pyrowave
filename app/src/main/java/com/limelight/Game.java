@@ -803,6 +803,7 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
                 .setApp(app)
                 .setEnableUltraLowLatency(prefConfig.enableUltraLowLatency)
                 .setBitrate(isMetered ? prefConfig.meteredBitrate: prefConfig.bitrate)
+                .setPyroWaveQuality(prefConfig.pyroWaveBppX100, prefConfig.pyroWaveMaxMbps)
                 .setEnableSops(prefConfig.enableSops)
                 .enableLocalAudioPlayback(prefConfig.playHostAudio)
                 .setMaxPacketSize(1392)

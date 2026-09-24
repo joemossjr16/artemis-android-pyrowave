@@ -115,7 +115,8 @@ public class SeekBarPreference extends Preference
                 String t;
                 if (divisor != 1) {
                     float floatValue = roundedValue / (float)divisor;
-                    t = String.format((Locale)null, "%.1f", floatValue);
+                    int decimalPlaces = divisor == 100 ? 2 : 1;
+                    t = String.format((Locale)null, "%." + decimalPlaces + "f", floatValue).trim();
                 }
                 else {
                     t = String.valueOf(value);

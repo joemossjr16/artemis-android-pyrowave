@@ -308,6 +308,11 @@
     <string name="summary_enable_hdr">Stream HDR when the game and PC GPU support it. HDR requires a GPU with HEVC Main 10 encoding support.</string>
     <string name="title_pyrowave_444">PyroWave 4:4:4 (full colour detail)</string>
     <string name="summary_pyrowave_444">Stream PyroWave with full-resolution colour for sharper coloured text and edges. Needs about 1.6 times the bitrate for the same sharpness and a bit more decode time. Falls back to 4:2:0 if the host does not support it.</string>
+    <string name="title_pyrowave_bpp">PyroWave quality</string>
+    <string name="summary_pyrowave_bpp">Target quality in bits per pixel. Higher values increase image detail and bitrate.</string>
+    <string name="suffix_pyrowave_bpp">bpp</string>
+    <string name="title_pyrowave_cap">PyroWave bitrate cap</string>
+    <string name="summary_pyrowave_cap">Maximum PyroWave bitrate in Mbps. Set to 0 for no cap.</string>
     <string name="title_enable_pyrowave">Use PyroWave on fast local networks (Experimental)</string>
     <string name="summary_enable_pyrowave">Offer the PyroWave codec to hosts that support it. It needs a very high bitrate (about 200 Mbps at 1080p60, more at higher resolutions and frame rates). Requires a 64-bit device with a Vulkan 1.3 GPU. SDR only.</string>
     <string name="title_full_range">Force full range video (Experimental)</string>

@@ -18,6 +18,8 @@ public class StreamConfiguration {
     private int resolutionScaleFactor;
     private int clientRefreshRateX100;
     private int bitrate;
+    private int pyroWaveBppX100 = 160;
+    private int pyroWaveMaxMbps;
     private boolean sops;
     private boolean enableAdaptiveResolution;
     private boolean playLocalAudio;
@@ -73,6 +75,12 @@ public class StreamConfiguration {
         
         public StreamConfiguration.Builder setBitrate(int bitrate) {
             config.bitrate = bitrate;
+            return this;
+        }
+
+        public StreamConfiguration.Builder setPyroWaveQuality(int bppX100, int maxMbps) {
+            config.pyroWaveBppX100 = bppX100;
+            config.pyroWaveMaxMbps = maxMbps;
             return this;
         }
         
@@ -202,6 +210,9 @@ public class StreamConfiguration {
     public int getBitrate() {
         return bitrate;
     }
+
+    public int getPyroWaveBppX100() { return pyroWaveBppX100; }
+    public int getPyroWaveMaxMbps() { return pyroWaveMaxMbps; }
     
     public int getMaxPacketSize() {
         return maxPacketSize;
