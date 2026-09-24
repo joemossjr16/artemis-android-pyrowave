@@ -222,6 +222,30 @@ public class NvConnection {
         return StreamConfiguration.STREAM_CFG_AUTO;
     }
     
+    private int getNegotiatedBitrate() {
+        StreamConfiguration config = context.streamConfig;
+        int formats = config.getSupportedVideoFormats();
+        boolean pyrowave420 = (formats & MoonBridge.VIDEO_FORMAT_PYROWAVE) != 0;
+        boolean pyrowave444 = (formats & MoonBridge.VIDEO_FORMAT_PYROWAVE_444) != 0;
+        if ((!pyrowave420 && !pyrowave444) || (context.serverCodecModeSupport & 0x00800000) == 0) {
+            return config.getBitrate();
+        }
+
+        boolean use444 = pyrowave444 && (context.serverCodecModeSupport & 0x01000000) != 0;
+        double bpp = Math.max(0.25, Math.min(4.0, config.getPyroWaveBppX100() / 100.0));
+        if (use444) bpp *= 1.625;
+        int fps = config.getRefreshRate();
+        if (fps > 1000) {
+            fps = Math.round(fps / 1000.0f);
+        }
+        double kbps = (double) context.negotiatedWidth * context.negotiatedHeight *
+                Math.max(fps, 1) * bpp / 1000.0;
+        if (config.getPyroWaveMaxMbps() > 0) {
+            kbps = Math.min(kbps, config.getPyroWaveMaxMbps() * 1000.0);
+        }
+        return (int) Math.max(500.0, Math.min(10_000_000.0, kbps));
+    }
+
     private boolean startApp() throws XmlPullParserException, IOException
     {
         NvHTTP h = new NvHTTP(context.serverAddress, context.httpsPort, uniqueId, context.serverCert, cryptoProvider);
@@ -460,7 +484,7 @@ public class NvConnection {
                             context.serverAppVersion, context.serverGfeVersion, context.rtspSessionUrl,
                             context.serverCodecModeSupport,
                             context.negotiatedWidth, context.negotiatedHeight,
-                            context.streamConfig.getRefreshRate(), context.streamConfig.getBitrate(),
+                            context.streamConfig.getRefreshRate(), getNegotiatedBitrate(),
                             context.negotiatedPacketSize, context.negotiatedRemoteStreaming,
                             context.streamConfig.getAudioConfiguration().toInt(),
                             context.streamConfig.getSupportedVideoFormats(),
