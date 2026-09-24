@@ -17,6 +17,7 @@
 
 #include <android/log.h>
 #include <android/native_window_jni.h>
+#include <sys/system_properties.h>
 #include <dlfcn.h>
 #include <time.h>
 #include <jni.h>
@@ -423,6 +424,15 @@ namespace {
         }
 
         bool createDecoder() {
+            // Debug override for PyroWave's wavelet precision (0 = FP16, 1 = default mixed,
+            // 2 = FP32), e.g. `adb shell setprop debug.pyrowave.precision 0`. PyroWave reads it
+            // once per process, so restart the app after changing it.
+            char precision[PROP_VALUE_MAX] = {};
+            if (__system_property_get("debug.pyrowave.precision", precision) > 0) {
+                setenv("PYROWAVE_PRECISION", precision, 1);
+                LOGI("PyroWave precision override: %s", precision);
+            }
+
             pyrowave_device_create_queue_info pyroQueue = {queue, queueFamily, 0};
             pyrowave_device_create_info info = {};
             info.GetInstanceProcAddr = vk.GetInstanceProcAddr;
@@ -442,6 +452,16 @@ namespace {
             // Mobile GPUs (Adreno, Mali) decode much faster with PyroWave's fragment path,
             // which runs the inverse DWT in render passes instead of compute shaders.
             fragmentPath = pyrowave_decoder_device_prefers_fragment_path(pyroDevice);
+            // Debug override: `adb shell setprop debug.pyrowave.path compute|fragment`.
+            char path[PROP_VALUE_MAX] = {};
+            if (__system_property_get("debug.pyrowave.path", path) > 0) {
+                if (strcmp(path, "compute") == 0) {
+                    fragmentPath = false;
+                } else if (strcmp(path, "fragment") == 0) {
+                    fragmentPath = true;
+                }
+                LOGI("PyroWave decode path override: %s", path);
+            }
             // Command buffers are recorded for the graphics queue, which also does compute.
             pyrowave_device_set_queue_type(pyroDevice, fragmentPath ? VK_QUEUE_GRAPHICS_BIT : VK_QUEUE_COMPUTE_BIT);
 
@@ -1234,6 +1254,11 @@ namespace {
                  stats.presentUs / double(stats.frames) / 1000.0, presentModeName(presentMode));
             stats = {};
             stats.startUs = now;
+
+            // PyroWave's own per-pass GPU timings, to see which stage dominates decode.
+            pyrowave_device_report_performance_stats(pyroDevice, [](void *, const char *msg) {
+                LOGI("PyroWave pass: %s", msg);
+            }, nullptr, true);
         }
     };
 
