@@ -739,6 +739,10 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
         boolean offerPyroWave = prefConfig.enablePyroWave && !willStreamHdr && decoderRenderer.isPyroWaveSupported();
         if (offerPyroWave) {
             supportedVideoFormats |= MoonBridge.VIDEO_FORMAT_PYROWAVE;
+            if (prefConfig.enablePyroWave444) {
+                // Full-resolution chroma; hosts without PyroWave 4:4:4 fall back to 4:2:0.
+                supportedVideoFormats |= MoonBridge.VIDEO_FORMAT_PYROWAVE_444;
+            }
         }
         else if (prefConfig.enablePyroWave && !willStreamHdr) {
             Toast.makeText(this, "This device cannot decode PyroWave (needs a 64-bit Vulkan 1.3 GPU)", Toast.LENGTH_LONG).show();
