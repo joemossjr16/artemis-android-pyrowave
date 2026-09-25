@@ -7,6 +7,9 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.content.res.Configuration;
+import android.graphics.Color;
+import android.graphics.drawable.Drawable;
+import android.graphics.drawable.GradientDrawable;
 import android.media.MediaCodecInfo;
 import android.net.Uri;
 import android.os.Build;
@@ -17,6 +20,7 @@ import android.os.Vibrator;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.content.ContextCompat;
 import androidx.core.content.FileProvider;
 import androidx.fragment.app.DialogFragment;
 import androidx.preference.CheckBoxPreference;
@@ -43,6 +47,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowInsets;
 import android.widget.EditText;
+import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.Toast;
 
@@ -329,17 +334,50 @@ public class StreamSettings extends AppCompatActivity {
             UiHelper.applyStatusBarPadding(view);
 
             Context context = inflater.getContext();
+            float density = getResources().getDisplayMetrics().density;
+            boolean amoledEnabled = prevPrefConfig != null && prevPrefConfig.amoledTheme;
+
+            int screenBgColor = amoledEnabled ? Color.BLACK : Color.parseColor("#1A1A1A");
+            int cardBgColor = amoledEnabled ? Color.parseColor("#141414") : Color.parseColor("#2A2A2A");
+            int accentColor = amoledEnabled ? Color.parseColor("#B388FF") : Color.parseColor("#FF4081");
 
             LinearLayout wrapper = new LinearLayout(context);
             wrapper.setOrientation(LinearLayout.VERTICAL);
+            wrapper.setBackgroundColor(screenBgColor);
+            view.setBackgroundColor(Color.TRANSPARENT);
+
+            FrameLayout searchContainer = new FrameLayout(context);
+            GradientDrawable searchBg = new GradientDrawable();
+            searchBg.setShape(GradientDrawable.RECTANGLE);
+            searchBg.setCornerRadius(28 * density);
+            searchBg.setColor(cardBgColor);
+            searchBg.setStroke(Math.round(density), accentColor);
+            searchContainer.setBackground(searchBg);
+
+            int marginH = Math.round(16 * density);
+            LinearLayout.LayoutParams containerParams = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            containerParams.setMargins(marginH, Math.round(12 * density), marginH, Math.round(4 * density));
 
             EditText searchBox = new EditText(context);
             searchBox.setHint(R.string.hint_search_settings);
             searchBox.setSingleLine(true);
             searchBox.setInputType(InputType.TYPE_CLASS_TEXT);
-            int hPad = (int) (16 * getResources().getDisplayMetrics().density);
-            int vPad = (int) (8 * getResources().getDisplayMetrics().density);
-            searchBox.setPadding(hPad, vPad, hPad, vPad);
+            searchBox.setBackground(null);
+            searchBox.setTextColor(Color.WHITE);
+            searchBox.setHintTextColor(Color.parseColor("#9E9E9E"));
+            int innerPadH = Math.round(16 * density);
+            int innerPadV = Math.round(10 * density);
+            searchBox.setPadding(innerPadH, innerPadV, innerPadH, innerPadV);
+
+            Drawable searchIcon = ContextCompat.getDrawable(context, R.drawable.ic_search);
+            if (searchIcon != null) {
+                searchIcon = searchIcon.mutate();
+                searchIcon.setTint(accentColor);
+                searchBox.setCompoundDrawablesRelativeWithIntrinsicBounds(searchIcon, null, null, null);
+                searchBox.setCompoundDrawablePadding(Math.round(8 * density));
+            }
+
             searchBox.addTextChangedListener(new TextWatcher() {
                 @Override
                 public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
@@ -353,8 +391,10 @@ public class StreamSettings extends AppCompatActivity {
                 public void afterTextChanged(Editable s) {}
             });
 
-            wrapper.addView(searchBox, new LinearLayout.LayoutParams(
+            searchContainer.addView(searchBox, new FrameLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+            wrapper.addView(searchContainer, containerParams);
             wrapper.addView(view, new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
 
