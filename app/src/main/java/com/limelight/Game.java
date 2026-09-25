@@ -107,6 +107,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 import android.widget.ImageButton;
 import androidx.annotation.NonNull;
+import androidx.annotation.RequiresApi;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.NotificationManagerCompat;
 import androidx.preference.PreferenceManager;
@@ -415,6 +416,23 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
             currentOrientation = Configuration.ORIENTATION_LANDSCAPE;
             setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_USER_LANDSCAPE);
         } else {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
+                    && prefConfig.autoDisplaySettings
+                    && prefConfig.renderMode == 0
+            ) {
+                // Ignore the configured resolution/FPS lists and always stream at this
+                // device's native panel resolution and highest supported refresh rate,
+                // so the same install adapts automatically across different devices.
+                Display.Mode bestMode = findHighestNativeDisplayMode(currentDisplay);
+                if (bestMode != null) {
+                    prefConfig.width = Math.max(bestMode.getPhysicalWidth(), bestMode.getPhysicalHeight());
+                    prefConfig.height = Math.min(bestMode.getPhysicalWidth(), bestMode.getPhysicalHeight());
+                    prefConfig.fps = bestMode.getRefreshRate();
+                    LimeLog.info("Auto display settings: using native " + prefConfig.width + "x" +
+                            prefConfig.height + "@" + prefConfig.fps);
+                }
+            }
+
             if (prefConfig.renderMode != 0) {
                 prefConfig.videoScaleMode = PreferenceConfiguration.ScaleMode.STRETCH;
             }
@@ -1438,6 +1456,28 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
     private boolean isRefreshRateGoodMatch(float refreshRate) {
         return refreshRate >= prefConfig.fps &&
                 Math.round(refreshRate) % prefConfig.fps <= 3;
+    }
+
+    // Picks the display mode with the largest panel resolution, and among modes tied for
+    // that resolution, the highest refresh rate. Used for "automatically match this device".
+    @RequiresApi(Build.VERSION_CODES.M)
+    private static Display.Mode findHighestNativeDisplayMode(Display display) {
+        Display.Mode best = null;
+        for (Display.Mode candidate : display.getSupportedModes()) {
+            if (best == null) {
+                best = candidate;
+                continue;
+            }
+
+            long candidateArea = (long) candidate.getPhysicalWidth() * candidate.getPhysicalHeight();
+            long bestArea = (long) best.getPhysicalWidth() * best.getPhysicalHeight();
+
+            if (candidateArea > bestArea ||
+                    (candidateArea == bestArea && candidate.getRefreshRate() > best.getRefreshRate())) {
+                best = candidate;
+            }
+        }
+        return best;
     }
 
     private boolean shouldIgnoreInsetsForResolution(int width, int height) {

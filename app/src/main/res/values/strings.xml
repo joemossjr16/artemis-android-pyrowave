@@ -207,6 +207,8 @@
     <string name="title_native_fps_dialog">Native FPS Warning</string>
     <string name="title_checkbox_auto_invert_video_resolution">Auto Invert Resolution</string>
     <string name="summary_checkbox_auto_invert_video_resolution">Automatically invert the width and height of the video stream when in portrait mode.\nFor example: 1920x1080 will become 1080x1920.</string>
+    <string name="title_auto_display_settings">Automatically match this device</string>
+    <string name="summary_auto_display_settings">Always stream at this device\'s native resolution and highest supported refresh rate, overriding the Resolution and Frame Rate settings above. Useful if you move between devices with different screens.</string>
     <string name="title_video_scale_mode">Video Scale Mode</string>
     <string name="summary_video_scale_mode">Select between Fit, Fill and Stretch</string>
     <string name="video_scale_mode_fit">Fit</string>
