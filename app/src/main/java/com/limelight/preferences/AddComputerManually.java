@@ -278,6 +278,7 @@ public class AddComputerManually extends AppCompatActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        PreferenceConfiguration.applyAmoledThemeIfEnabled(this);
         super.onCreate(savedInstanceState);
 
         String action = getIntent().getAction();

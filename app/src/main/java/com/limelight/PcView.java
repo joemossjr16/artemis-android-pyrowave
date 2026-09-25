@@ -208,6 +208,7 @@ public class PcView extends AppCompatActivity implements AdapterFragmentCallback
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        PreferenceConfiguration.applyAmoledThemeIfEnabled(this);
         super.onCreate(savedInstanceState);
 
         // Assume we're in the foreground when created to avoid a race

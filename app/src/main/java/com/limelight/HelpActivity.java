@@ -11,6 +11,7 @@ import android.window.OnBackInvokedDispatcher;
 
 import androidx.appcompat.app.AppCompatActivity;
 
+import com.limelight.preferences.PreferenceConfiguration;
 import com.limelight.utils.SpinnerDialog;
 
 public class HelpActivity extends AppCompatActivity {
@@ -23,6 +24,7 @@ public class HelpActivity extends AppCompatActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        PreferenceConfiguration.applyAmoledThemeIfEnabled(this);
         super.onCreate(savedInstanceState);
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {

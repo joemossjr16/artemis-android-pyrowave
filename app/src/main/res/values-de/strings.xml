@@ -293,7 +293,7 @@
     Deine geteilten Leistungsdaten helfen, den verfügbaren Datensatz zu verbessern und zu erweitern:\n
      https://tinyurl.com/artemis-performance\n\n</string>
     <string name="email_recipient">artemistics.logs@gmail.com</string>
-    <string name="email_subject">Artemistics - Performance Log</string>
+    <string name="email_subject">Pyrollotics - Performance Log</string>
     <string name="email_chooser_title">Performance Log senden...</string>
     <string name="toast_no_email_clients">Keine E-Mail-Clients installiert.</string>
     <string name="toast_no_logs">Es sind noch keine Leistungsdaten gespeichert.</string>
