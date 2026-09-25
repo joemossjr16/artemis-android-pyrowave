@@ -603,6 +603,12 @@
             android:summary="@string/summary_checkbox_full_screen"
             android:defaultValue="true"
             app:iconSpaceReserved="false" />
+        <CheckBoxPreference
+            android:key="checkbox_amoled_theme"
+            android:title="@string/title_checkbox_amoled_theme"
+            android:summary="@string/summary_checkbox_amoled_theme"
+            android:defaultValue="false"
+            app:iconSpaceReserved="false" />
         <com.limelight.preferences.SeekBarPreference
             android:defaultValue="90"
             android:key="seekbar_keyboard_axi_opacity"

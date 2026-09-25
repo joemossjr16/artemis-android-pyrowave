@@ -1,11 +1,15 @@
 package com.limelight.preferences;
 
+import android.app.Activity;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.os.Build;
 import android.view.Display;
 
+import androidx.preference.PreferenceManager;
+
+import com.limelight.R;
 import com.limelight.nvstream.jni.MoonBridge;
 import com.limelight.profiles.ProfilesManager;
 
@@ -74,6 +78,7 @@ public class PreferenceConfiguration {
     private static final String PYROWAVE_BPP_X100_PREF_STRING = "seekbar_pyrowave_bpp_x100";
     private static final String PYROWAVE_MAX_MBPS_PREF_STRING = "seekbar_pyrowave_max_mbps";
     private static final String ENABLE_PIP_PREF_STRING = "checkbox_enable_pip";
+    static final String AMOLED_THEME_PREF_STRING = "checkbox_amoled_theme";
     private static final String ENABLE_PERF_OVERLAY_STRING = "checkbox_enable_perf_overlay";
     private static final String ENABLE_PERF_LOGGING = "checkbox_enable_perf_logging";
     private static final String BIND_ALL_USB_STRING = "checkbox_usb_bind_all";
@@ -171,6 +176,7 @@ public class PreferenceConfiguration {
     private static final boolean DEFAULT_ENABLE_HDR = false;
     private static final boolean DEFAULT_ENABLE_PYROWAVE = false;
     private static final boolean DEFAULT_ENABLE_PIP = false;
+    private static final boolean DEFAULT_AMOLED_THEME = false;
     private static final boolean DEFAULT_ENABLE_PERF_OVERLAY = false;
     private static final boolean DEFAULT_PERF_OVERLAY_BOTTOM = false;
     private static final boolean DEFAULT_ENABLE_PERF_LOGGING = false;
@@ -278,6 +284,7 @@ public class PreferenceConfiguration {
     public int pyroWaveBppX100;
     public int pyroWaveMaxMbps;
     public boolean enablePip;
+    public boolean amoledTheme;
 
     public float parallax_depth;
 
@@ -570,6 +577,15 @@ public class PreferenceConfiguration {
         }
 
         return (int)Math.round(resolutionFactor * frameRateFactor) * 1000;
+    }
+
+    // Reads the AMOLED theme preference directly, without a full readPreferences() pass,
+    // so it can run before an Activity's super.onCreate()/setContentView().
+    public static void applyAmoledThemeIfEnabled(Activity activity) {
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(activity);
+        if (prefs.getBoolean(AMOLED_THEME_PREF_STRING, DEFAULT_AMOLED_THEME)) {
+            activity.setTheme(R.style.AppTheme_Amoled);
+        }
     }
 
     public static boolean getDefaultSmallMode(Context context) {
@@ -941,6 +957,7 @@ private static int getFramePacingValue(Context context) {
         config.pyroWaveBppX100 = prefs.getInt(PYROWAVE_BPP_X100_PREF_STRING, 160);
         config.pyroWaveMaxMbps = prefs.getInt(PYROWAVE_MAX_MBPS_PREF_STRING, 0);
         config.enablePip = prefs.getBoolean(ENABLE_PIP_PREF_STRING, DEFAULT_ENABLE_PIP);
+        config.amoledTheme = prefs.getBoolean(AMOLED_THEME_PREF_STRING, DEFAULT_AMOLED_THEME);
         config.enablePerfOverlay = prefs.getBoolean(ENABLE_PERF_OVERLAY_STRING, DEFAULT_ENABLE_PERF_OVERLAY);
         config.enablePerfLogging = prefs.getBoolean(ENABLE_PERF_LOGGING, DEFAULT_ENABLE_PERF_LOGGING);
         config.enablePerfOverlayLite = prefs.getBoolean("checkbox_enable_perf_overlay_lite",DEFAULT_ENABLE_PERF_OVERLAY);

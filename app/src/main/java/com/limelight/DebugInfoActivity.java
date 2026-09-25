@@ -22,6 +22,7 @@ import android.widget.Toast;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 
+import com.limelight.preferences.PreferenceConfiguration;
 import com.limelight.utils.DeviceUtils;
 
 import java.util.ArrayList;
@@ -39,6 +40,7 @@ public class DebugInfoActivity extends AppCompatActivity implements View.OnClick
 
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
+        PreferenceConfiguration.applyAmoledThemeIfEnabled(this);
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_axitest);
 
