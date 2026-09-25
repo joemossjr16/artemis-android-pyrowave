@@ -763,7 +763,10 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
                 supportedVideoFormats |= MoonBridge.VIDEO_FORMAT_PYROWAVE_444;
             }
         }
-        else if (prefConfig.enablePyroWave && !willStreamHdr) {
+        else if (prefConfig.enablePyroWave && willStreamHdr) {
+            Toast.makeText(this, "PyroWave is enabled but not offered: it's SDR-only and this stream is HDR", Toast.LENGTH_LONG).show();
+        }
+        else if (prefConfig.enablePyroWave) {
             Toast.makeText(this, "This device cannot decode PyroWave (needs a 64-bit Vulkan 1.3 GPU)", Toast.LENGTH_LONG).show();
         }
         decoderRenderer.setPyroWaveOffered(offerPyroWave);
