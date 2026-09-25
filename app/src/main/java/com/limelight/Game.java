@@ -82,6 +82,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.PersistableBundle;
+import android.os.PowerManager;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
 import android.util.Rational;
@@ -766,6 +767,23 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
             Toast.makeText(this, "This device cannot decode PyroWave (needs a 64-bit Vulkan 1.3 GPU)", Toast.LENGTH_LONG).show();
         }
         decoderRenderer.setPyroWaveOffered(offerPyroWave);
+
+        if (offerPyroWave) {
+            // Ask the OS for a stable, sustained clock rate rather than the usual
+            // boost-then-throttle behavior most OEM power governors use for short
+            // bursts. Scoped to PyroWave specifically: a maintainer removed this
+            // same call in 2024 for the normal hardware-decode path ("our CPU usage
+            // is so low it's doubtful we'd trigger thermal throttling"), which is
+            // true for a fixed-function decoder but not for PyroWave's continuous
+            // GPU compute decode. Vendor-neutral (unlike per-OEM "game mode" settings).
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                PowerManager powerManager = (PowerManager) getSystemService(Context.POWER_SERVICE);
+                if (powerManager != null && powerManager.isSustainedPerformanceModeSupported()) {
+                    getWindow().setSustainedPerformanceMode(true);
+                    LimeLog.info("Sustained performance mode enabled for PyroWave");
+                }
+            }
+        }
 
         int gamepadMask = ControllerHandler.getAttachedControllerMask(this);
         if (!prefConfig.multiController) {
