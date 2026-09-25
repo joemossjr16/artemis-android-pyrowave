@@ -757,4 +757,6 @@
 
     <string name="title_checkbox_amoled_theme">AMOLED Theme</string>
     <string name="summary_checkbox_amoled_theme">Pure black backgrounds with a purple accent, for OLED screens. Restart the app to fully apply.</string>
+
+    <string name="hint_search_settings">Search settings</string>
 </resources>
