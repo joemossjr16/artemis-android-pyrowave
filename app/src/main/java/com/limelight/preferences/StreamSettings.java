@@ -28,9 +28,11 @@ import androidx.preference.PreferenceFragmentCompat;
 import androidx.preference.PreferenceManager;
 import androidx.preference.PreferenceScreen;
 
+import android.text.Editable;
 import android.text.InputFilter;
 import android.text.InputType;
 import android.text.TextUtils;
+import android.text.TextWatcher;
 import android.util.DisplayMetrics;
 import android.util.Log;
 import android.util.Range;
@@ -41,7 +43,12 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowInsets;
 import android.widget.EditText;
+import android.widget.LinearLayout;
 import android.widget.Toast;
+
+import androidx.preference.PreferenceGroup;
+
+import java.util.Locale;
 
 import com.google.gson.Gson;
 import com.limelight.DebugInfoActivity;
@@ -320,7 +327,78 @@ public class StreamSettings extends AppCompatActivity {
         public View onCreateView(@NonNull LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
             View view = super.onCreateView(inflater, container, savedInstanceState);
             UiHelper.applyStatusBarPadding(view);
-            return view;
+
+            Context context = inflater.getContext();
+
+            LinearLayout wrapper = new LinearLayout(context);
+            wrapper.setOrientation(LinearLayout.VERTICAL);
+
+            EditText searchBox = new EditText(context);
+            searchBox.setHint(R.string.hint_search_settings);
+            searchBox.setSingleLine(true);
+            searchBox.setInputType(InputType.TYPE_CLASS_TEXT);
+            int hPad = (int) (16 * getResources().getDisplayMetrics().density);
+            int vPad = (int) (8 * getResources().getDisplayMetrics().density);
+            searchBox.setPadding(hPad, vPad, hPad, vPad);
+            searchBox.addTextChangedListener(new TextWatcher() {
+                @Override
+                public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+
+                @Override
+                public void onTextChanged(CharSequence s, int start, int before, int count) {
+                    filterPreferences(s.toString());
+                }
+
+                @Override
+                public void afterTextChanged(Editable s) {}
+            });
+
+            wrapper.addView(searchBox, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+            wrapper.addView(view, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+
+            return wrapper;
+        }
+
+        // Filters the preference tree by title/summary text. Preferences already removed by
+        // initializePreferences() (feature-detection, platform checks, etc.) simply aren't in
+        // the tree anymore, so this can't accidentally re-show something that was hidden for
+        // a real reason - it only toggles setVisible() on what's left.
+        private void filterPreferences(String query) {
+            PreferenceScreen screen = getPreferenceScreen();
+            if (screen != null) {
+                filterPreferenceGroup(screen, query.trim());
+            }
+        }
+
+        private boolean filterPreferenceGroup(PreferenceGroup group, String query) {
+            boolean anyVisible = false;
+            for (int i = 0; i < group.getPreferenceCount(); i++) {
+                Preference pref = group.getPreference(i);
+                boolean visible;
+                if (pref instanceof PreferenceGroup) {
+                    visible = filterPreferenceGroup((PreferenceGroup) pref, query);
+                } else {
+                    visible = matchesQuery(pref, query);
+                }
+                pref.setVisible(visible);
+                anyVisible |= visible;
+            }
+            return anyVisible;
+        }
+
+        private boolean matchesQuery(Preference pref, String query) {
+            if (query.isEmpty()) {
+                return true;
+            }
+            String q = query.toLowerCase(Locale.ROOT);
+            CharSequence title = pref.getTitle();
+            if (title != null && title.toString().toLowerCase(Locale.ROOT).contains(q)) {
+                return true;
+            }
+            CharSequence summary = pref.getSummary();
+            return summary != null && summary.toString().toLowerCase(Locale.ROOT).contains(q);
         }
 
         public View onCreateView(LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState, boolean unused) {
