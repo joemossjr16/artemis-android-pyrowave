@@ -55,13 +55,18 @@ namespace {
         VK_KHR_SURFACE_EXTENSION_NAME,
         VK_KHR_ANDROID_SURFACE_EXTENSION_NAME,
     };
+    // Needed for VK_COLOR_SPACE_HDR10_ST2084_EXT to show up in
+    // vkGetPhysicalDeviceSurfaceFormatsKHR results; requested only if the
+    // loader actually reports it (older devices/drivers may not).
+    constexpr const char *HDR10_COLORSPACE_EXTENSION = VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME;
     const char *const DEVICE_EXTENSIONS[] = {
         VK_KHR_SWAPCHAIN_EXTENSION_NAME,
     };
 
 #define VK_GLOBAL_FUNCTIONS(X) \
     X(CreateInstance) \
-    X(EnumerateInstanceVersion)
+    X(EnumerateInstanceVersion) \
+    X(EnumerateInstanceExtensionProperties)
 
 #define VK_INSTANCE_FUNCTIONS(X) \
     X(DestroyInstance) \
@@ -276,12 +281,51 @@ namespace {
             frameRateHz = frameRate > 0 ? frameRate : 60;
             width = uint32_t(streamWidth);
             height = uint32_t(streamHeight);
+            // Planes/swapchain/pipeline depend on whether the stream turns out to be
+            // HDR10, which isn't known until the first frame's PYRW header (see
+            // pushFrame()/finishSetup()) - only the HDR-agnostic device/decoder setup
+            // happens eagerly here.
             return apiVersionSupported() && createInstanceAndSurface() && createDevice() &&
-                   createDecoder() && createPlanes() && createSwapchain() && createPipeline() &&
-                   createFrameResources();
+                   createDecoder();
+        }
+
+        // Deferred half of create(): the parts that depend on hdr10, run once the
+        // first frame's header reveals it. Not re-run on later frames even if
+        // (unexpectedly) a later frame's flag differs - HDR-ness is a property of
+        // the whole stream, decided by the host once at session start.
+        bool finishSetup(bool hdr) {
+            hdr10 = hdr;
+            formatsReady = true;
+            if (!(createPlanes() && createSwapchain() && createPipeline() && createFrameResources())) {
+                // formatsReady stays true so pushFrame() doesn't retry this every
+                // frame; setupFailed makes submit() report SUBMIT_ERROR on every
+                // later frame instead of silently skipping forever.
+                //
+                // KNOWN GAP: SUBMIT_ERROR only maps to DR_NEED_IDR on the Java side
+                // (see PyroWaveDecoderRenderer.decodeUnit()), which just makes
+                // Moonlight ask the host for another IDR - the host will send
+                // another HDR10 frame, finishSetup() won't be called again
+                // (formatsReady is already true), and this repeats forever rather
+                // than ending the stream cleanly. That mirrors the exact
+                // "IDR-request loop that never resolves" failure mode the Windows
+                // client's decoder-hang watchdog was built to avoid (see
+                // PYROWAVE_ERROR_DECODER_HANG in moonlight-qt-pyrowave). Fixing this
+                // for real needs a fatal-error callback from here up through JNI to
+                // something like NvConnectionListener/connectionTerminated() (used
+                // elsewhere in this app - see Game.java/NvConnection.java) - not
+                // done here. In practice this only triggers if HDR10 is negotiated
+                // on a device/driver that turns out to lack an HDR10-capable Vulkan
+                // swapchain, which should be rare.
+                setupFailed = true;
+                return false;
+            }
+            return true;
         }
 
         int submit(const uint8_t *data, size_t length) {
+            if (setupFailed) {
+                return SUBMIT_ERROR;
+            }
             if (!pushFrame(data, length)) {
                 pyrowave_decoder_clear(decoder);
                 return SUBMIT_SKIPPED;
@@ -313,14 +357,32 @@ namespace {
                 return false;
             }
 
+            // Check for VK_EXT_swapchain_colorspace so createSwapchain() knows whether
+            // an HDR10 surface format search can possibly find anything - requesting
+            // an unsupported instance extension would make vkCreateInstance fail outright.
+            uint32_t availableExtCount = 0;
+            vk.EnumerateInstanceExtensionProperties(nullptr, &availableExtCount, nullptr);
+            std::vector<VkExtensionProperties> availableExts(availableExtCount);
+            vk.EnumerateInstanceExtensionProperties(nullptr, &availableExtCount, availableExts.data());
+            for (const auto &ext : availableExts) {
+                if (strcmp(ext.extensionName, HDR10_COLORSPACE_EXTENSION) == 0) {
+                    hdrColorspaceExtensionAvailable = true;
+                    break;
+                }
+            }
+            enabledInstanceExtensions.assign(std::begin(INSTANCE_EXTENSIONS), std::end(INSTANCE_EXTENSIONS));
+            if (hdrColorspaceExtensionAvailable) {
+                enabledInstanceExtensions.push_back(HDR10_COLORSPACE_EXTENSION);
+            }
+
             // These create infos stay alive for the device's lifetime: PyroWave reads them.
             appInfo = {VK_STRUCTURE_TYPE_APPLICATION_INFO};
             appInfo.pApplicationName = "Moonlight";
             appInfo.apiVersion = VK_API_VERSION_1_3;
             instanceInfo = {VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO};
             instanceInfo.pApplicationInfo = &appInfo;
-            instanceInfo.enabledExtensionCount = uint32_t(std::size(INSTANCE_EXTENSIONS));
-            instanceInfo.ppEnabledExtensionNames = INSTANCE_EXTENSIONS;
+            instanceInfo.enabledExtensionCount = uint32_t(enabledInstanceExtensions.size());
+            instanceInfo.ppEnabledExtensionNames = enabledInstanceExtensions.data();
             if (!check(vk.CreateInstance(&instanceInfo, nullptr, &instance), "vkCreateInstance")) {
                 return false;
             }
@@ -486,10 +548,14 @@ namespace {
         bool createPlane(Plane &plane, uint32_t planeWidth, uint32_t planeHeight) {
             plane.width = planeWidth;
             plane.height = planeHeight;
+            // HDR10: 10-bit studio-range BT.2020/PQ codes left-shifted into a 16-bit
+            // container (P010 convention), matching the host's HDR capture pipeline
+            // and moonlight-qt-pyrowave's PyrowaveHdrPresenter on Windows.
+            const VkFormat planeFormat = hdr10 ? VK_FORMAT_R16_UNORM : VK_FORMAT_R8_UNORM;
 
             VkImageCreateInfo imageInfo = {VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
             imageInfo.imageType = VK_IMAGE_TYPE_2D;
-            imageInfo.format = VK_FORMAT_R8_UNORM;
+            imageInfo.format = planeFormat;
             imageInfo.extent = {planeWidth, planeHeight, 1};
             imageInfo.mipLevels = 1;
             imageInfo.arrayLayers = 1;
@@ -530,7 +596,7 @@ namespace {
             VkImageViewCreateInfo viewInfo = {VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
             viewInfo.image = plane.image;
             viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-            viewInfo.format = VK_FORMAT_R8_UNORM;
+            viewInfo.format = planeFormat;
             viewInfo.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
             return check(vk.CreateImageView(device, &viewInfo, nullptr, &plane.view), "vkCreateImageView");
         }
@@ -564,12 +630,40 @@ namespace {
                     LOGE("Surface reports no formats");
                     return false;
                 }
-                // UNORM, not sRGB: the shader already outputs gamma-encoded BT.709 values.
                 auto chosen = formats[0];
-                for (const auto &format : formats) {
-                    if (format.format == VK_FORMAT_R8G8B8A8_UNORM || format.format == VK_FORMAT_B8G8R8A8_UNORM) {
-                        chosen = format;
-                        break;
+                if (hdr10) {
+                    // A2B10G10R10 + HDR10 ST.2084: the HDR10 shader (planar_csc_hdr10.frag)
+                    // outputs PQ-encoded BT.2020 values directly, so this needs to be the
+                    // raw code values reaching the display, same as
+                    // VK_COLOR_SPACE_HDR10_ST2084_EXT requires. There's no safe SDR
+                    // fallback here: the planes are already allocated R16_UNORM and the
+                    // pipeline will bind the HDR10 shader, so an SDR swapchain would just
+                    // display the wrong colours instead of failing - fail the whole chain
+                    // instead (see the caller in pushFrame()/finishSetup()).
+                    bool foundHdr = false;
+                    if (hdrColorspaceExtensionAvailable) {
+                        for (const auto &format : formats) {
+                            if (format.format == VK_FORMAT_A2B10G10R10_UNORM_PACK32 &&
+                                format.colorSpace == VK_COLOR_SPACE_HDR10_ST2084_EXT) {
+                                chosen = format;
+                                foundHdr = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (!foundHdr) {
+                        LOGE("HDR10 stream negotiated, but this device/driver has no "
+                             "A2B10G10R10 + ST.2084 surface format (colorspace extension %s)",
+                             hdrColorspaceExtensionAvailable ? "available" : "unavailable");
+                        return false;
+                    }
+                } else {
+                    // UNORM, not sRGB: the SDR shader already outputs gamma-encoded BT.709 values.
+                    for (const auto &format : formats) {
+                        if (format.format == VK_FORMAT_R8G8B8A8_UNORM || format.format == VK_FORMAT_B8G8R8A8_UNORM) {
+                            chosen = format;
+                            break;
+                        }
                     }
                 }
                 swapchainFormat = chosen.format;
@@ -802,7 +896,9 @@ namespace {
             vk.UpdateDescriptorSets(device, 3, writes, 0, nullptr);
 
             VkShaderModule vert = createShader(fullscreen_vert_spv, sizeof(fullscreen_vert_spv));
-            VkShaderModule frag = createShader(planar_csc_frag_spv, sizeof(planar_csc_frag_spv));
+            VkShaderModule frag = hdr10 ?
+                createShader(planar_csc_hdr10_frag_spv, sizeof(planar_csc_hdr10_frag_spv)) :
+                createShader(planar_csc_frag_spv, sizeof(planar_csc_frag_spv));
             if (vert == VK_NULL_HANDLE || frag == VK_NULL_HANDLE) {
                 if (vert != VK_NULL_HANDLE) vk.DestroyShaderModule(device, vert, nullptr);
                 if (frag != VK_NULL_HANDLE) vk.DestroyShaderModule(device, frag, nullptr);
@@ -896,10 +992,20 @@ namespace {
         }
 
         bool pushFrame(const uint8_t *data, size_t length) {
+            // Reserved byte bit 0: HDR10 planes (16-bit studio-range BT.2020/PQ
+            // codes) instead of 8-bit SDR codes - see src/pyrowave.cpp on the host.
+            // Any other bit set is from a future host we don't understand.
             if (length < FRAME_HEADER_SIZE || std::memcmp(data, "PYRW", 4) != 0 ||
-                data[4] != FRAME_VERSION || data[7] != 0) {
+                data[4] != FRAME_VERSION || (data[7] & ~uint8_t{1}) != 0) {
                 LOGW("Dropping frame without a valid PYRW header");
                 return false;
+            }
+            if (!formatsReady) {
+                const bool hdr = (data[7] & 1) != 0;
+                if (!finishSetup(hdr)) {
+                    LOGE("Deferred %s setup failed", hdr ? "HDR10" : "SDR");
+                    return false;
+                }
             }
             const size_t packetCount = (size_t(data[5]) << 8) | data[6];
             size_t offset = FRAME_HEADER_SIZE;
@@ -969,14 +1075,15 @@ namespace {
             planeBarrier(decodeCommandBuffer, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, decodeWriteStage(),
                          decodeWriteAccess(), planesInitialized ? VK_IMAGE_LAYOUT_GENERAL : VK_IMAGE_LAYOUT_UNDEFINED);
 
+            const VkFormat planeFormat = hdr10 ? VK_FORMAT_R16_UNORM : VK_FORMAT_R8_UNORM;
             pyrowave_gpu_buffers buffers = {};
             for (int i = 0; i < 3; ++i) {
                 auto &view = buffers.planes[i];
                 view.image = planes[i].image;
                 view.width = planes[i].width;
                 view.height = planes[i].height;
-                view.image_format = VK_FORMAT_R8_UNORM;
-                view.view_format = VK_FORMAT_R8_UNORM;
+                view.image_format = planeFormat;
+                view.view_format = planeFormat;
                 view.aspect = VK_IMAGE_ASPECT_COLOR_BIT;
                 view.swizzle = VK_COMPONENT_SWIZZLE_IDENTITY;
                 view.layout = VK_IMAGE_LAYOUT_GENERAL;
@@ -1151,10 +1258,19 @@ namespace {
         uint32_t width = 0;
         uint32_t height = 0;
         bool chroma444 = false;
+        // Set from the first frame's PYRW header (see pushFrame()); planes,
+        // swapchain format, and pipeline shader selection all defer to this,
+        // so create() only sets up the device/decoder - see finishSetup().
+        bool hdr10 = false;
+        bool formatsReady = false;
+        bool setupFailed = false;
+        bool hdrColorspaceExtensionAvailable = false;
 
         // Kept alive for PyroWave, which reads the create infos after device creation.
         VkApplicationInfo appInfo = {};
         VkInstanceCreateInfo instanceInfo = {};
+        // Backing storage for instanceInfo.ppEnabledExtensionNames - must outlive it.
+        std::vector<const char *> enabledInstanceExtensions;
         float queuePriority = 1.0f;
         VkDeviceQueueCreateInfo queueInfo = {};
         VkPhysicalDeviceVulkan13Features features13 = {};
