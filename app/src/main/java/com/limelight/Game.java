@@ -1242,17 +1242,11 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
             params.width = FrameLayout.LayoutParams.MATCH_PARENT;
             params.height = split.videoPx;
             params.gravity = Gravity.TOP;
-            // The lower half is otherwise just empty black space - show the on-screen
-            // controller (initializing it if this is the first time) so there's actually
-            // something there to drag into it. Doesn't force it back off when the split
-            // clears; that's the existing toggle's call.
-            if (!onExternelDisplay) {
-                if (virtualController == null) {
-                    initVirtualController();
-                } else {
-                    virtualController.show();
-                }
-            }
+            // Reverted: auto-showing the on-screen controller here exposed its default
+            // element scale being badly miscalibrated for this device's large panel
+            // (confirmed on a real Z Fold: buttons the size of half the screen). Showing
+            // it is still the user's own call via the existing menu toggle, which lets
+            // them resize it down first.
         } else {
             params.width = FrameLayout.LayoutParams.MATCH_PARENT;
             params.height = FrameLayout.LayoutParams.MATCH_PARENT;
@@ -1260,6 +1254,18 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
                     (Gravity.CENTER_HORIZONTAL | Gravity.TOP) : Gravity.CENTER;
         }
         streamContainer.setLayoutParams(params);
+    }
+
+    /**
+     * Undoes prepareDisplayForRendering()'s Java-level SurfaceView aspect lock for PyroWave
+     * sessions, which do their own correct aspect-preserving fit internally (see
+     * MediaCodecDecoderRenderer.isPyroWaveActive()'s doc for why stacking both is wrong).
+     * Called once, right after PyroWave's own setup() succeeds.
+     */
+    public void resetStreamAspectRatioLock() {
+        if (streamContainer != null) {
+            streamContainer.setDesiredAspectRatio(0);
+        }
     }
 
     private void initKeyboardController(){
@@ -1811,7 +1817,10 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
             }
         }
 
-        // Don't do setFixedSize since it might not update the view dimensions correctly when entering PiP mode
+        // Don't do setFixedSize since it might not update the view dimensions correctly when entering PiP mode.
+        // This runs before the decoder (and so before PyroWave vs. MediaCodec is even known - see
+        // resetStreamAspectRatioLock(), called once that's decided) - PyroWave undoes this lock
+        // for itself afterward since it does its own aspect-preserving fit internally.
         if (!(prefConfig.videoScaleMode == PreferenceConfiguration.ScaleMode.STRETCH || aspectRatioMatch)) {
             // Set the surface to scale based on the aspect ratio of the stream
             streamContainer.setDesiredAspectRatio((double)displayWidth / (double)displayHeight);

@@ -832,6 +832,17 @@ public class MediaCodecDecoderRenderer extends VideoDecoderRenderer implements C
                 return -1;
             }
             LimeLog.info("Using PyroWave Vulkan renderer for " + width + "x" + height + (chroma444 ? " 4:4:4" : " 4:2:0"));
+            // prepareDisplayForRendering() already ran (well before this callback) and may have
+            // set StreamContainer's Java-level aspect lock using the wire/decode aspect ratio,
+            // which autoInvertVideoResolution can leave swapped relative to the true display
+            // aspect. PyroWave's own present() now fits correctly against the true aspect
+            // (displayAspectWidth/Height above), so stacking that Java-level lock on top just
+            // double-letterboxes the picture into a much smaller ("skinny") rectangle - confirmed
+            // on a real Z Fold. Undo it here, the one place that reliably runs after that earlier
+            // (possibly wrong) lock and before the first frame presents.
+            if (activity instanceof com.limelight.Game) {
+                ((com.limelight.Game) activity).resetStreamAspectRatioLock();
+            }
             return 0;
         }
 
