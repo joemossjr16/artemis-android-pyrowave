@@ -59,6 +59,11 @@ namespace {
     // vkGetPhysicalDeviceSurfaceFormatsKHR results; requested only if the
     // loader actually reports it (older devices/drivers may not).
     constexpr const char *HDR10_COLORSPACE_EXTENSION = VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME;
+    // Without this, some compositors/displays apply a default tone-mapping
+    // curve sized for a much brighter mastering display than the stream
+    // actually used, which makes correctly PQ-encoded HDR10 content look
+    // blown out. Requested only if the device actually reports it.
+    constexpr const char *HDR_METADATA_EXTENSION = VK_EXT_HDR_METADATA_EXTENSION_NAME;
     const char *const DEVICE_EXTENSIONS[] = {
         VK_KHR_SWAPCHAIN_EXTENSION_NAME,
     };
@@ -82,7 +87,8 @@ namespace {
     X(GetPhysicalDeviceSurfaceSupportKHR) \
     X(GetPhysicalDeviceSurfaceCapabilitiesKHR) \
     X(GetPhysicalDeviceSurfaceFormatsKHR) \
-    X(GetPhysicalDeviceSurfacePresentModesKHR)
+    X(GetPhysicalDeviceSurfacePresentModesKHR) \
+    X(EnumerateDeviceExtensionProperties)
 
 #define VK_DEVICE_FUNCTIONS(X) \
     X(DestroyDevice) \
@@ -458,12 +464,27 @@ namespace {
             features2.pNext = &features12;
             features2.features.shaderInt16 = VK_TRUE;
 
+            uint32_t availableDeviceExtCount = 0;
+            vk.EnumerateDeviceExtensionProperties(physicalDevice, nullptr, &availableDeviceExtCount, nullptr);
+            std::vector<VkExtensionProperties> availableDeviceExts(availableDeviceExtCount);
+            vk.EnumerateDeviceExtensionProperties(physicalDevice, nullptr, &availableDeviceExtCount, availableDeviceExts.data());
+            for (const auto &ext : availableDeviceExts) {
+                if (strcmp(ext.extensionName, HDR_METADATA_EXTENSION) == 0) {
+                    hdrMetadataExtensionAvailable = true;
+                    break;
+                }
+            }
+            enabledDeviceExtensions.assign(std::begin(DEVICE_EXTENSIONS), std::end(DEVICE_EXTENSIONS));
+            if (hdrMetadataExtensionAvailable) {
+                enabledDeviceExtensions.push_back(HDR_METADATA_EXTENSION);
+            }
+
             deviceInfo = {VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO};
             deviceInfo.pNext = &features2;
             deviceInfo.queueCreateInfoCount = 1;
             deviceInfo.pQueueCreateInfos = &queueInfo;
-            deviceInfo.enabledExtensionCount = uint32_t(std::size(DEVICE_EXTENSIONS));
-            deviceInfo.ppEnabledExtensionNames = DEVICE_EXTENSIONS;
+            deviceInfo.enabledExtensionCount = uint32_t(enabledDeviceExtensions.size());
+            deviceInfo.ppEnabledExtensionNames = enabledDeviceExtensions.data();
             if (!check(vk.CreateDevice(physicalDevice, &deviceInfo, nullptr, &device), "vkCreateDevice")) {
                 return false;
             }
@@ -475,6 +496,9 @@ namespace {
                 }
                 device = VK_NULL_HANDLE;
                 return false;
+            }
+            if (hdrMetadataExtensionAvailable) {
+                SetHdrMetadataEXT = reinterpret_cast<PFN_vkSetHdrMetadataEXT>(vk.GetDeviceProcAddr(device, "vkSetHdrMetadataEXT"));
             }
             vk.GetDeviceQueue(device, queueFamily, 0, &queue);
             VkPhysicalDeviceProperties props;
@@ -711,6 +735,26 @@ namespace {
             }
             swapchain = newSwapchain;
             swapchainExtent = caps.currentExtent;
+
+            if (hdr10 && SetHdrMetadataEXT != nullptr) {
+                // Typical mastering-display defaults (BT.2020 primaries, D65 white
+                // point, 1000-nit peak) since PyroWave doesn't carry real per-stream
+                // mastering metadata - same values commonly used as an HDR10 fallback
+                // elsewhere (e.g. ffmpeg/mpv). Without any metadata at all, some
+                // displays/compositors fall back to a tone-mapping curve sized for a
+                // much brighter reference display, which makes correctly PQ-encoded
+                // content look overexposed.
+                VkHdrMetadataEXT metadata = {VK_STRUCTURE_TYPE_HDR_METADATA_EXT};
+                metadata.displayPrimaryRed = {0.708f, 0.292f};
+                metadata.displayPrimaryGreen = {0.170f, 0.797f};
+                metadata.displayPrimaryBlue = {0.131f, 0.046f};
+                metadata.whitePoint = {0.3127f, 0.3290f};
+                metadata.maxLuminance = 1000.0f;
+                metadata.minLuminance = 0.0001f;
+                metadata.maxContentLightLevel = 1000.0f;
+                metadata.maxFrameAverageLightLevel = 400.0f;
+                SetHdrMetadataEXT(device, 1, &swapchain, &metadata);
+            }
 
             uint32_t count = 0;
             vk.GetSwapchainImagesKHR(device, swapchain, &count, nullptr);
@@ -1265,6 +1309,8 @@ namespace {
         bool formatsReady = false;
         bool setupFailed = false;
         bool hdrColorspaceExtensionAvailable = false;
+        bool hdrMetadataExtensionAvailable = false;
+        PFN_vkSetHdrMetadataEXT SetHdrMetadataEXT = nullptr;
 
         // Kept alive for PyroWave, which reads the create infos after device creation.
         VkApplicationInfo appInfo = {};
@@ -1277,6 +1323,8 @@ namespace {
         VkPhysicalDeviceVulkan12Features features12 = {};
         VkPhysicalDeviceFeatures2 features2 = {};
         VkDeviceCreateInfo deviceInfo = {};
+        // Backing storage for deviceInfo.ppEnabledExtensionNames - must outlive it.
+        std::vector<const char *> enabledDeviceExtensions;
 
         VkInstance instance = VK_NULL_HANDLE;
         VkSurfaceKHR surface = VK_NULL_HANDLE;
