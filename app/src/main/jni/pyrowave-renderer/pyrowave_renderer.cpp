@@ -687,6 +687,9 @@ namespace {
             }
             swapchain = newSwapchain;
             swapchainExtent = caps.currentExtent;
+            LOGI("Swapchain extent %ux%u, display aspect %ux%u, currentTransform=%u",
+                 swapchainExtent.width, swapchainExtent.height, displayWidth, displayHeight,
+                 (unsigned) caps.currentTransform);
 
             uint32_t count = 0;
             vk.GetSwapchainImagesKHR(device, swapchain, &count, nullptr);

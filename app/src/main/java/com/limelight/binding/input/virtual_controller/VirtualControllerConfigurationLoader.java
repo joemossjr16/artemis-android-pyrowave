@@ -18,6 +18,7 @@ import org.json.JSONObject;
 
 public class VirtualControllerConfigurationLoader {
     public static final String OSC_PREFERENCE = "OSC";
+    private static final String OSC_FOLD_SPLIT_PREFERENCE = "OSC_FOLD_SPLIT";
 
     private static int getPercent(
             int percent,
@@ -413,7 +414,8 @@ public class VirtualControllerConfigurationLoader {
 
     public static void saveProfile(final VirtualController controller,
                                    final Context context) {
-        SharedPreferences.Editor prefEditor = context.getSharedPreferences(OSC_PREFERENCE, Activity.MODE_PRIVATE).edit();
+        String preferenceName = controller.isFoldSplitActive() ? OSC_FOLD_SPLIT_PREFERENCE : OSC_PREFERENCE;
+        SharedPreferences.Editor prefEditor = context.getSharedPreferences(preferenceName, Activity.MODE_PRIVATE).edit();
 
         for (VirtualControllerElement element : controller.getElements()) {
             String prefKey = ""+element.elementId;
@@ -428,7 +430,21 @@ public class VirtualControllerConfigurationLoader {
     }
 
     public static void loadFromPreferences(final VirtualController controller, final Context context) {
-        SharedPreferences pref = context.getSharedPreferences(OSC_PREFERENCE, Activity.MODE_PRIVATE);
+        loadFromPreferences(controller, context, OSC_PREFERENCE);
+    }
+
+    public static void loadFoldSplitProfile(final VirtualController controller, final Context context) {
+        SharedPreferences pref = context.getSharedPreferences(OSC_FOLD_SPLIT_PREFERENCE, Activity.MODE_PRIVATE);
+        if (pref.getAll().isEmpty()) {
+            return;
+        }
+        loadFromPreferences(controller, context, OSC_FOLD_SPLIT_PREFERENCE);
+    }
+
+    private static void loadFromPreferences(final VirtualController controller,
+                                            final Context context,
+                                            final String preferenceName) {
+        SharedPreferences pref = context.getSharedPreferences(preferenceName, Activity.MODE_PRIVATE);
 
         for (VirtualControllerElement element : controller.getElements()) {
             String prefKey = ""+element.elementId;

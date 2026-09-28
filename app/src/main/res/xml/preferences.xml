@@ -90,6 +90,15 @@
             android:title="@string/title_checkbox_use_virtual_display"
             app:iconSpaceReserved="false" />
 
+        <ListPreference
+            android:defaultValue="-2"
+            android:entries="@array/host_display_scale_names"
+            android:entryValues="@array/host_display_scale_values"
+            android:key="list_host_display_scale"
+            android:summary="@string/summary_host_display_scale"
+            android:title="@string/title_host_display_scale"
+            app:iconSpaceReserved="false" />
+
         <CheckBoxPreference
             android:defaultValue="false"
             android:key="checkbox_auto_orientation"

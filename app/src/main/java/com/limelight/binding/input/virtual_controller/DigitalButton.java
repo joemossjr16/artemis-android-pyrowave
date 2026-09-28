@@ -48,6 +48,7 @@ public class DigitalButton extends VirtualControllerElement {
     private int icon = -1;
 
     private int iconPress=-1;
+    private String faceButtonStyle = "xbox";
     private long timerLongClickTimeout = 3000;
     private final Runnable longClickRunnable = new Runnable() {
         @Override
@@ -141,6 +142,11 @@ public class DigitalButton extends VirtualControllerElement {
         this.iconPress = iconPress;
     }
 
+    public void setFaceButtonStyle(String style) {
+        faceButtonStyle = style;
+        invalidate();
+    }
+
     @Override
     protected void onElementDraw(Canvas canvas) {
         // set transparent background
@@ -157,6 +163,11 @@ public class DigitalButton extends VirtualControllerElement {
         rect.left = rect.top = paint.getStrokeWidth();
         rect.right = getWidth() - rect.left;
         rect.bottom = getHeight() - rect.top;
+
+        if (elementId == EID_A || elementId == EID_B || elementId == EID_X || elementId == EID_Y) {
+            drawStyledFaceButton(canvas, PreferenceConfiguration.readPreferences(getContext()).oscOpacity);
+            return;
+        }
 
         //皮肤选择 官方皮肤
         if(PreferenceConfiguration.readPreferences(getContext()).enableOnScreenStyleOfficial){
@@ -194,6 +205,40 @@ public class DigitalButton extends VirtualControllerElement {
             canvas.drawRect(rect,paint);
         }
 
+    }
+
+    private void drawStyledFaceButton(Canvas canvas, int opacity) {
+        int color;
+        String label;
+        if ("playstation".equals(faceButtonStyle)) {
+            label = elementId == EID_A ? "×" : elementId == EID_B ? "○" : elementId == EID_X ? "□" : "△";
+            color = elementId == EID_A ? Color.rgb(92, 170, 255) :
+                    elementId == EID_B ? Color.rgb(255, 115, 154) :
+                    elementId == EID_X ? Color.rgb(90, 190, 255) : Color.rgb(95, 210, 180);
+        } else if ("nintendo".equals(faceButtonStyle)) {
+            label = elementId == EID_A ? "A" : elementId == EID_B ? "B" : elementId == EID_X ? "X" : "Y";
+            color = elementId == EID_A ? Color.rgb(230, 63, 67) :
+                    elementId == EID_B ? Color.rgb(65, 145, 225) :
+                    elementId == EID_X ? Color.rgb(75, 185, 115) : Color.rgb(235, 190, 55);
+        } else {
+            label = elementId == EID_A ? "A" : elementId == EID_B ? "B" : elementId == EID_X ? "X" : "Y";
+            color = elementId == EID_A ? Color.rgb(90, 190, 90) :
+                    elementId == EID_B ? Color.rgb(220, 70, 65) :
+                    elementId == EID_X ? Color.rgb(65, 135, 220) : Color.rgb(225, 190, 55);
+        }
+
+        int alpha = Math.max(0, Math.min(255, Math.round(opacity * 2.55f)));
+        paint.setStyle(Paint.Style.FILL);
+        paint.setColor(isPressed() ? pressedColor : Color.argb(alpha, Color.red(color), Color.green(color), Color.blue(color)));
+        float inset = Math.max(3, getWidth() * 0.07f);
+        rect.set(inset, inset, getWidth() - inset, getHeight() - inset);
+        canvas.drawOval(rect, paint);
+
+        paint.setColor(Color.argb(alpha, 255, 255, 255));
+        paint.setTextAlign(Paint.Align.CENTER);
+        paint.setTextSize(getPercent(getWidth(), "playstation".equals(faceButtonStyle) ? 39 : 32));
+        paint.setStyle(Paint.Style.FILL);
+        canvas.drawText(label, getWidth() / 2f, getHeight() * 0.63f, paint);
     }
 
     private void onClickCallback() {

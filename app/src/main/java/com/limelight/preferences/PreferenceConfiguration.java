@@ -54,6 +54,7 @@ public class PreferenceConfiguration {
     private static final String AUTO_INVERT_VIDEO_RESOLUTION_PREF_STRING = "checkbox_auto_invert_video_resolution";
     private static final String AUTO_DISPLAY_SETTINGS_PREF_STRING = "checkbox_auto_display_settings";
     private static final String RESOLUTION_SCALE_FACTOR_PREF_STRING = "seekbar_resolution_scale_factor";
+    private static final String HOST_DISPLAY_SCALE_PREF_STRING = "list_host_display_scale";
     private static final String RESUME_WITHOUT_CONFIRM_PREF_STRING = "checkbox_resume_without_confirm";
     private static final String VIDEO_SCALE_MODE_PREF_STRING = "list_video_scale_mode";
     private static final String SOPS_PREF_STRING = "checkbox_enable_sops";
@@ -310,6 +311,7 @@ public class PreferenceConfiguration {
     // resolution and highest supported refresh rate.
     public boolean autoDisplaySettings;
     public int resolutionScaleFactor;
+    public int hostDisplayScale;
     public boolean resumeWithoutConfirm;
     //竖屏模式
     public boolean autoOrientation;
@@ -980,6 +982,11 @@ private static int getFramePacingValue(Context context) {
         config.autoInvertVideoResolution = prefs.getBoolean(AUTO_INVERT_VIDEO_RESOLUTION_PREF_STRING, DEFAULT_AUTO_INVERT_VIDEO_RESOLUTION);
         config.autoDisplaySettings = prefs.getBoolean(AUTO_DISPLAY_SETTINGS_PREF_STRING, DEFAULT_AUTO_DISPLAY_SETTINGS);
         config.resolutionScaleFactor = prefs.getInt(RESOLUTION_SCALE_FACTOR_PREF_STRING, DEFAULT_RESOLUTION_SCALE_FACTOR);
+        try {
+            config.hostDisplayScale = Integer.parseInt(prefs.getString(HOST_DISPLAY_SCALE_PREF_STRING, "-2"));
+        } catch (NumberFormatException e) {
+            config.hostDisplayScale = -2;
+        }
 
         config.resumeWithoutConfirm = prefs.getBoolean(RESUME_WITHOUT_CONFIRM_PREF_STRING, DEFAULT_RESUME_WITHOUT_CONFIRM);
 

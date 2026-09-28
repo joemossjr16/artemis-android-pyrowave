@@ -30,6 +30,7 @@ public class TrackpadContext implements TouchContext {
     private double velocityY = 0.0;
     private long lastMoveTime;
     private boolean isScrollTransitioning = false;
+    private boolean externalMouseDrag;
 
     private final NvConnection conn;
     private final int actionIndex;
@@ -236,6 +237,11 @@ public class TrackpadContext implements TouchContext {
 
     @Override
     public void touchUpEvent(int eventX, int eventY, long eventTime) {
+        if (externalMouseDrag) {
+            externalMouseDrag = false;
+            cancelled = false;
+            return;
+        }
         if (cancelled) {
             return;
         }
@@ -304,6 +310,30 @@ public class TrackpadContext implements TouchContext {
     @Override
     public boolean touchMoveEvent(int eventX, int eventY, long eventTime) {
         if (cancelled) {
+            return true;
+        }
+
+        if (externalMouseDrag) {
+            int rawDeltaX = eventX - lastTouchX;
+            int rawDeltaY = eventY - lastTouchY;
+            double magnitude = Math.sqrt(rawDeltaX * rawDeltaX + rawDeltaY * rawDeltaY);
+            double precisionMultiplier = Math.cbrt(magnitude / ACCELERATION_THRESHOLD);
+            float deltaX = swapAxis ? rawDeltaY : rawDeltaX;
+            float deltaY = swapAxis ? rawDeltaX : rawDeltaY;
+            deltaX *= precisionMultiplier * sensitivityX;
+            deltaY *= precisionMultiplier * sensitivityY;
+            pendingDeltaX += deltaX;
+            pendingDeltaY += deltaY;
+            short sendDeltaX = (short) pendingDeltaX;
+            short sendDeltaY = (short) pendingDeltaY;
+            if (sendDeltaX != 0 || sendDeltaY != 0) {
+                conn.sendMouseMove(sendDeltaX, sendDeltaY);
+                pendingDeltaX -= sendDeltaX;
+                pendingDeltaY -= sendDeltaY;
+            }
+            lastTouchX = eventX;
+            lastTouchY = eventY;
+            lastMoveTime = eventTime;
             return true;
         }
 
@@ -413,6 +443,11 @@ public class TrackpadContext implements TouchContext {
 
     @Override
     public void cancelTouch() {
+        if (externalMouseDrag) {
+            externalMouseDrag = false;
+            cancelled = true;
+            return;
+        }
         cancelled = true;
 
         if (isFlicking) {
@@ -423,6 +458,16 @@ public class TrackpadContext implements TouchContext {
         if (confirmedDrag) {
             conn.sendMouseButtonUp(getMouseButtonIndex());
         }
+    }
+
+    /** Moves the pointer without starting or releasing this trackpad's own click/drag gesture. */
+    public void beginExternalMouseDrag() {
+        externalMouseDrag = true;
+        cancelled = false;
+        isClickPending = false;
+        isDblClickPending = false;
+        confirmedDrag = false;
+        handler.removeCallbacksAndMessages(null);
     }
 
     @Override

@@ -16,6 +16,7 @@ public class StreamConfiguration {
     private float launchRefreshRate;
     private boolean virtualDisplay;
     private int resolutionScaleFactor;
+    private int hostDisplayScale = -2;
     private int clientRefreshRateX100;
     private int bitrate;
     private int pyroWaveBppX100 = 160;
@@ -70,6 +71,11 @@ public class StreamConfiguration {
 
         public StreamConfiguration.Builder setResolutionScaleFactor(int scaleFactor) {
             config.resolutionScaleFactor = scaleFactor;
+            return this;
+        }
+
+        public StreamConfiguration.Builder setHostDisplayScale(int scalePercent) {
+            config.hostDisplayScale = scalePercent;
             return this;
         }
         
@@ -206,6 +212,7 @@ public class StreamConfiguration {
     public boolean getVirtualDisplay() { return virtualDisplay; }
 
     public int getResolutionScaleFactor() { return resolutionScaleFactor; }
+    public int getHostDisplayScale() { return hostDisplayScale; }
     
     public int getBitrate() {
         return bitrate;

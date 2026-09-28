@@ -335,6 +335,12 @@ public class MoonBridge {
         }
     }
 
+    public static void bridgeClResolutionChanged(int width, int height, boolean success) {
+        if (connectionListener != null) {
+            connectionListener.resolutionChanged(width, height, success);
+        }
+    }
+
     public static void setupBridge(VideoDecoderRenderer videoRenderer, AudioRenderer audioRenderer, NvConnectionListener connectionListener) {
         MoonBridge.videoRenderer = videoRenderer;
         MoonBridge.audioRenderer = audioRenderer;
@@ -362,6 +368,11 @@ public class MoonBridge {
     public static native void interruptConnection();
 
     public static native void sendExecServerCmd(int cmdId);
+
+    // Returns a positive value if the request was actually sent (wait for
+    // NvConnectionListener.resolutionChanged() for the host's ack); zero or negative if it
+    // wasn't (e.g. -1 if the connected host doesn't support this fork extension at all).
+    public static native int sendResolutionChangeRequest(int width, int height);
 
     public static native void sendEmptyPayload();
 

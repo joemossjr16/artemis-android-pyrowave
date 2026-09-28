@@ -197,6 +197,11 @@
     <string name="summary_seekbar_metered_bitrate">High bitrates consume more data, lower bitrates improve smoothness in metered networks.\nSet 0 for ¼ of the above bitrate settings.</string>
     <string name="suffix_seekbar_bitrate_mbps">Mbps</string>
     <string name="title_resolution_scale_factor">Resolution Scale Factor</string>
+    <string name="title_host_display_scale">Host display scale</string>
+    <string name="summary_host_display_scale">Windows scaling for Apollo\'s virtual display on the next connection. Does not change stream resolution.</string>
+    <string name="host_display_scale_default">Use host setting</string>
+    <string name="host_display_scale_recommended">Recommended for resolution</string>
+    <string name="host_display_scale_preserve">Preserve current scale</string>
     <string name="summary_resolution_scale_factor">Server side requested virtual screen resolution will be multiplied by this factor. Streaming resolution are not affected.\ne.g. 120% will make 2000x1000 become 2400x1200.\nSetting a higher scale factor will improve image quality for some games.\nRequires Apollo to take effect.</string>
     <string name="resolution_prefix_native">Native</string>
     <string name="resolution_prefix_native_fullscreen">Native Full-Screen</string>
@@ -761,4 +766,28 @@
     <string name="summary_checkbox_amoled_theme">Pure black backgrounds with a purple accent, for OLED screens. Restart the app to fully apply.</string>
 
     <string name="hint_search_settings">Search settings</string>
+
+    <string name="game_menu_controller_layout">Controller layout</string>
+    <string name="game_menu_controller_layout_basic">Basic — D-pad, A/B, Select, Start</string>
+    <string name="game_menu_controller_layout_standard">Standard — D-pad, A/B/X/Y, left stick, shoulders</string>
+    <string name="game_menu_controller_layout_advanced">Advanced — full controller</string>
+    <string name="controller_settings_title">On-screen controller</string>
+    <string name="controller_settings_customize">Customize button positions and sizes</string>
+    <string name="controller_settings_button_style">Button style</string>
+    <string name="controller_style_xbox">Xbox</string>
+    <string name="controller_style_nintendo">Nintendo</string>
+    <string name="controller_style_playstation">PlayStation</string>
+    <string name="stream_input_mode_title">How would you like to control this stream?</string>
+    <string name="stream_input_mode_gaming">Gaming controls — on-screen controller</string>
+    <string name="stream_input_mode_browsing">Precise browsing — touchpad, clicks, keyboard</string>
+    <string name="stream_input_mode_vanilla">Vanilla — full-screen touch, no controls</string>
+    <string name="controller_settings_input_mode">Change stream input mode</string>
+    <string name="pc_mode_touchpad">Touchpad</string>
+    <string name="pc_mode_left_click">Left click</string>
+    <string name="pc_mode_right_click">Right click</string>
+    <string name="pc_mode_keyboard">Keyboard</string>
+    <string name="controller_customize_gaming_only">Switch to Gaming controls to customize the gamepad layout.</string>
+    <string name="stream_layout_title">Choose control layout</string>
+    <string name="stream_layout_fullscreen_lower_half">Full-screen video — controls in lower half</string>
+    <string name="stream_layout_fold_split">Fold layout — video top, controls in black lower half</string>
 </resources>

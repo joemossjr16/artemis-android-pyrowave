@@ -43,6 +43,30 @@
         <item>stretch</item>
     </string-array>
 
+    <string-array name="host_display_scale_names">
+        <item>@string/host_display_scale_default</item>
+        <item>@string/host_display_scale_recommended</item>
+        <item>@string/host_display_scale_preserve</item>
+        <item>100%</item>
+        <item>125%</item>
+        <item>150%</item>
+        <item>175%</item>
+        <item>200%</item>
+        <item>225%</item>
+        <item>250%</item>
+        <item>300%</item>
+        <item>350%</item>
+        <item>400%</item>
+        <item>450%</item>
+        <item>500%</item>
+    </string-array>
+    <string-array name="host_display_scale_values" translatable="false">
+        <item>-2</item><item>-1</item><item>0</item>
+        <item>100</item><item>125</item><item>150</item><item>175</item>
+        <item>200</item><item>225</item><item>250</item><item>300</item>
+        <item>350</item><item>400</item><item>450</item><item>500</item>
+    </string-array>
+
     <string-array name="audio_config_names">
         <item>@string/audioconf_stereo</item>
         <item>@string/audioconf_51surround</item>

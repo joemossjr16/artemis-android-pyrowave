@@ -130,6 +130,9 @@ public class MediaCodecDecoderRenderer extends VideoDecoderRenderer implements C
     private byte optimalSlicesPerFrame;
     private boolean refFrameInvalidationActive;
     private int initialWidth, initialHeight;
+    // The Surface's Vulkan swapchain keeps its original full-screen extent when fold split
+    // shrinks the View. Preserve the original display aspect for later PyroWave reinit.
+    private int pyroWaveSurfaceAspectWidth, pyroWaveSurfaceAspectHeight;
     private boolean invertResolution;
     private int videoFormat;
     private Surface renderTarget;
@@ -555,6 +558,18 @@ public class MediaCodecDecoderRenderer extends VideoDecoderRenderer implements C
         return this.videoFormat;
     }
 
+    public int getActiveRefreshRate() {
+        return this.refreshRate;
+    }
+
+    // Whether setup()'s width/height are the true display-oriented dimensions swapped for
+    // the wire (see setup()'s initialWidth/initialHeight assignment) - needed by callers that
+    // compute a new *wire* width/height to request (e.g. a fold-split resolution change) from
+    // the true (display-oriented) resolution.
+    public boolean isInvertResolution() {
+        return this.invertResolution;
+    }
+
     private MediaFormat createBaseMediaFormat(String mimeType) {
         MediaFormat videoFormat = MediaFormat.createVideoFormat(mimeType, initialWidth, initialHeight);
 
@@ -817,6 +832,36 @@ public class MediaCodecDecoderRenderer extends VideoDecoderRenderer implements C
         return 0;
     }
 
+    /**
+     * Reinitializes the active decoder after a live mid-session resolution change (see
+     * Game.resolutionChanged()), at the host-confirmed width/height.
+     *
+     * The Surface's swapchain retains its original full-screen extent when fold split shrinks
+     * the View. Keep the original display aspect for Vulkan's viewport so it fills that buffer;
+     * Android then scales the complete buffer into the smaller View. Fitting the new stream's
+     * aspect into the old buffer leaves black bands at the top and bottom of the split.
+     */
+    public int reinitAtResolution(int width, int height) {
+        this.initialWidth = invertResolution ? height : width;
+        this.initialHeight = invertResolution ? width : height;
+
+        if (pyroWaveRenderer != null) {
+            boolean chroma444 = (videoFormat & MoonBridge.VIDEO_FORMAT_PYROWAVE_444) != 0;
+            pyroWaveRenderer.cleanup();
+            if (!pyroWaveRenderer.setup(renderTarget, width, height, refreshRate, chroma444,
+                    pyroWaveSurfaceAspectWidth, pyroWaveSurfaceAspectHeight)) {
+                LimeLog.severe("PyroWave renderer re-initialization failed");
+                pyroWaveRenderer = null;
+                return -1;
+            }
+            LimeLog.info("Using PyroWave Vulkan renderer for " + width + "x" + height + (chroma444 ? " 4:4:4" : " 4:2:0"));
+            return 0;
+        }
+
+        cleanup();
+        return setup(videoFormat, width, height, refreshRate);
+    }
+
     @Override
     public int setup(int format, int width, int height, int redrawRate) {
         this.targetFps = (redrawRate > 0 ? redrawRate : 60);
@@ -828,6 +873,8 @@ public class MediaCodecDecoderRenderer extends VideoDecoderRenderer implements C
         if ((format & MoonBridge.VIDEO_FORMAT_MASK_PYROWAVE) != 0) {
             pyroWaveRenderer = new PyroWaveDecoderRenderer();
             boolean chroma444 = (format & MoonBridge.VIDEO_FORMAT_PYROWAVE_444) != 0;
+            pyroWaveSurfaceAspectWidth = initialWidth;
+            pyroWaveSurfaceAspectHeight = initialHeight;
             // initialWidth/initialHeight are already un-inverted (see their assignment just
             // above) - the true display aspect ratio, same as what MediaFormat gets for the
             // MediaCodec path. width/height stay the real wire/decode size PyroWave needs.

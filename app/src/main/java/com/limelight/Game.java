@@ -150,6 +150,8 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
     // Only 2 touches are supported
     private final TouchContext[] touchContextMap = new TouchContext[2];
     private final TouchContext[] trackpadContextMap = new TouchContext[2];
+    private boolean pcBrowsingLeftButtonHeld;
+    private boolean pcBrowsingTrackpadActive;
     private PanZoomHandler panZoomHandler;
     private long threeFingerDownTime = 0;
     private long fourFingerDownTime = 0;
@@ -194,6 +196,8 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
     private boolean autoEnterPip = false;
     private boolean surfaceCreated = false;
     private boolean attemptedConnection = false;
+    private boolean streamSurfaceAvailable = false;
+    private boolean streamInputModeChosen = false;
     private int suppressPipRefCount = 0;
     private String pcName;
     private String appName;
@@ -840,6 +844,9 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
             // If we're using OSC, always set at least gamepad 1.
             gamepadMask |= 1;
         }
+        // The per-stream chooser appears after NvConnection configuration is built; reserve
+        // virtual controller slot 1 so Gaming controls can be selected for this session.
+        gamepadMask |= 1;
 
         // Set to the optimal mode for streaming
         float displayRefreshRate = prepareDisplayForRendering(currentDisplay);
@@ -880,6 +887,7 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
                 .setRefreshRate(chosenFrameRate)
                 .setVirtualDisplay(vDisplay)
                 .setResolutionScaleFactor(prefConfig.resolutionScaleFactor)
+                .setHostDisplayScale(prefConfig.hostDisplayScale)
                 .setApp(app)
                 .setEnableUltraLowLatency(prefConfig.enableUltraLowLatency)
                 .setBitrate(isMetered ? prefConfig.meteredBitrate: prefConfig.bitrate)
@@ -931,21 +939,9 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
             initMouseMode();
         }
 
-        if (prefConfig.onscreenController) {
-            // create virtual onscreen controller
-            if (prefConfig.hideOSCWhenHasGamepad) {
-                if (!controllerHandler.hasController()) {
-                    initVirtualController();
-                }
-            } else {
-                initVirtualController();
-            }
-        }
+        // The user chooses the input mode for this session before the stream is started.
 
         //特殊按键屏幕布局
-        if(prefConfig.enableKeyboard){
-            initKeyboardController();
-        }
 
         if (!decoderRenderer.isAvcSupported()) {
             if (spinner != null) {
@@ -963,6 +959,10 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
         //streamContainer.getHolder().addCallback(this);
 
         streamContainer.setOnSurfaceAvailable(() -> {
+            streamSurfaceAvailable = true;
+            if (!streamInputModeChosen) {
+                return;
+            }
             if (!attemptedConnection) {
                 LimeLog.info("Surface is available, starting connection...");
                 attemptedConnection = true;
@@ -984,6 +984,8 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
 
         overlayToggleButton = findViewById(R.id.overlayToggleZoomButton);
         setupOverlayToggleButton();
+
+        showStreamInputModeDialog();
 
         //fixed size + pacing without back-pressure on MTK
         try {
@@ -1190,17 +1192,30 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
     // override toggle (menu_toggle_fold_split) can recompute layout without waiting for the
     // sensor to fire again.
     private Rect lastFoldHinge = null;
+    private com.limelight.ui.FoldPosture.Split activeFoldSplit = null;
+    private boolean swallowingFoldSplitBackgroundTouch;
+    private static final String CONTROLLER_LAYOUT_PROFILE_PREF = "controller_layout_profile";
+    private static final String CONTROLLER_BUTTON_STYLE_PREF = "controller_button_style";
+    private static final String CONTROLLER_DISPLAY_MODE_PREF = "controller_display_mode";
+    private static final String CONTROLLER_LAYOUT_VARIANT_PREF = "controller_layout_variant";
     // Forces the split on regardless of what the hinge sensor reports (or whether this device
     // even has one) - some foldables don't reliably report FoldingFeature state, so this is the
     // fallback the game menu offers (see GameMenu.showAdvancedMenu()).
     private boolean foldSplitForced = false;
+    private boolean forceFullScreenVideo = false;
+    private boolean controlsConfinedToLowerHalf = false;
+    // Tracks the split state (active/inactive) that the last live resolution-change request
+    // corresponds to, so updateFoldSplitLayout() only re-sends on an actual transition rather
+    // than every hinge-sensor report.
+    private boolean lastRequestedFoldSplitActive = false;
+    // Whether the host acknowledged (or at least accepted sending) the last resolution-change
+    // request. False means the connected host predates this fork extension - fall back to the
+    // client-side crop-to-fill trick instead of leaving the picture letterboxed.
+    private boolean lastLiveResizeSupported = true;
 
     /**
-     * Applies (or clears) a tabletop fold split: video confined to the upper half, full-screen
-     * again otherwise. The on-screen controller isn't repositioned automatically - its elements
-     * are already user-movable (see {@link VirtualController.ControllerMode#MoveButtons}), so
-     * dragging them into the lower half once is a one-time setup rather than something this
-     * needs to solve.
+     * Applies or clears a tabletop fold split: video stays in the upper half and touch controls
+     * are scaled into the lower half, then both return to their saved full-screen layout.
      */
     private void applyFoldSplit(Rect hinge) {
         lastFoldHinge = hinge;
@@ -1209,6 +1224,7 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
 
     /** Manual override for devices whose hinge sensor doesn't report reliably (or at all). */
     public void toggleFoldSplit() {
+        forceFullScreenVideo = false;
         foldSplitForced = !foldSplitForced;
         updateFoldSplitLayout();
     }
@@ -1235,9 +1251,10 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
                 int gap = Math.max(1, height / 60);
                 split = new com.limelight.ui.FoldPosture.Split((height - gap) / 2, gap);
             }
-        } else if (lastFoldHinge != null) {
+        } else if (!forceFullScreenVideo && lastFoldHinge != null) {
             split = com.limelight.ui.FoldPosture.split(lastFoldHinge, root.getWidth(), root.getHeight());
         }
+        activeFoldSplit = split;
         if (split != null) {
             params.width = FrameLayout.LayoutParams.MATCH_PARENT;
             params.height = split.videoPx;
@@ -1254,16 +1271,52 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
                     (Gravity.CENTER_HORIZONTAL | Gravity.TOP) : Gravity.CENTER;
         }
         streamContainer.setLayoutParams(params);
-        // Fitting the stream's full original aspect ratio into the split's squeezed region
-        // just produces a small, letterboxed rectangle floating in a bigger black area -
-        // confirmed to look "awkward" on a real Z Fold, since the stream's actual resolution
-        // isn't renegotiated to match the smaller region. Crop-to-fill instead while the split
-        // is active: no black bars, some content cropped instead. Reverts to the user's own
-        // scale mode preference once the split clears.
-        boolean fill = split != null || prefConfig.videoScaleMode == PreferenceConfiguration.ScaleMode.FILL;
-        streamContainer.setFillDisplay(fill);
+        if (virtualController != null) {
+            int controlsTop = split != null ? split.videoPx + split.hingePx :
+                    (controlsConfinedToLowerHalf ? root.getHeight() / 2 : -1);
+            virtualController.setFoldSplitRegion(controlsTop, root.getHeight());
+        }
+
+        // Fitting the stream's full original resolution into the split's squeezed region just
+        // produced a small, letterboxed rectangle floating in a bigger black area, or (with the
+        // crop-to-fill workaround this replaces) cropped-off edges - confirmed "awkward" on a
+        // real Z Fold either way, since the stream's actual resolution never matched the
+        // visible region. Ask the host to actually re-encode at the split size instead, rounded
+        // down to even for PyroWave 4:2:0. Only send when the split state actually flips, not
+        // on every hinge-sensor report.
+        //
+        // displayWidth/displayHeight are the resolution actually negotiated with the host for
+        // this session (see their own assignment above in onCreate(), and confirmed by device
+        // testing to match the physical panel's own portrait pixel dimensions - e.g. 1848x2448
+        // for a Z Fold used vertically/unfolded, per the user's own measurements). A top/bottom
+        // split keeps the width (1848) and halves the height (2448), unchanged by whatever
+        // autoInvertVideoResolution's internal decode-frame bookkeeping does elsewhere - that
+        // only affects the *decoded frame's* own width/height labels (which end up transposed
+        // relative to the physical panel because the frame is rotated for display), not what
+        // resolution to actually request here.
+        boolean splitActive = split != null;
+        if (connected && splitActive != lastRequestedFoldSplitActive) {
+            lastRequestedFoldSplitActive = splitActive;
+            int targetWidth = displayWidth;
+            int targetHeight = splitActive ? ((displayHeight / 2) & ~1) : displayHeight;
+            LimeLog.info("FoldSplit debug: displayWidth=" + displayWidth + " displayHeight=" + displayHeight +
+                    " -> sending wire " + targetWidth + "x" + targetHeight);
+            if (targetWidth > 0 && targetHeight > 0) {
+                lastLiveResizeSupported = MoonBridge.sendResolutionChangeRequest(targetWidth, targetHeight) > 0;
+                if (!lastLiveResizeSupported) {
+                    LimeLog.info("Host does not support live resolution change; fold split will letterbox/crop instead");
+                }
+            } else {
+                lastLiveResizeSupported = true;
+            }
+        }
+
+        // Fallback for hosts that don't support IDX_SET_RESOLUTION: crop-to-fill the
+        // still-full-resolution stream into the split region rather than letterboxing it.
+        boolean fallbackToCropFill = splitActive && !lastLiveResizeSupported;
+        streamContainer.setFillDisplay(fallbackToCropFill || prefConfig.videoScaleMode == PreferenceConfiguration.ScaleMode.FILL);
         if (decoderRenderer != null) {
-            decoderRenderer.setPyroWaveFillMode(split != null);
+            decoderRenderer.setPyroWaveFillMode(fallbackToCropFill);
         }
     }
 
@@ -1284,6 +1337,66 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
         });
     }
 
+    private void showStreamInputModeDialog() {
+        String[] modes = new String[] {"gaming", "pc_browsing", "vanilla"};
+        int[] labels = new int[] {R.string.stream_input_mode_gaming, R.string.stream_input_mode_browsing,
+                R.string.stream_input_mode_vanilla};
+        CharSequence[] choices = new CharSequence[modes.length];
+        String selectedMode = getControllerDisplayMode();
+        int selectedIndex = 1;
+        for (int i = 0; i < modes.length; i++) {
+            choices[i] = getString(labels[i]);
+            if (modes[i].equals(selectedMode)) selectedIndex = i;
+        }
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.stream_input_mode_title)
+                .setSingleChoiceItems(choices, selectedIndex, (dialog, which) -> {
+                    if (which >= 0 && which < modes.length) {
+                        dialog.dismiss();
+                        showStreamControlLayoutDialog(modes[which]);
+                    }
+                })
+                .setNegativeButton(android.R.string.cancel, (dialog, which) -> finish())
+                .setCancelable(false)
+                .show();
+    }
+
+    private void showStreamControlLayoutDialog(String mode) {
+        String[] layouts = new String[] {"full_screen_lower_half", "fold_split"};
+        int[] labels = new int[] {R.string.stream_layout_fullscreen_lower_half, R.string.stream_layout_fold_split};
+        CharSequence[] choices = new CharSequence[layouts.length];
+        String selectedLayout = getControllerLayoutVariant();
+        int selectedIndex = "fold_split".equals(selectedLayout) ? 1 : 0;
+        for (int i = 0; i < layouts.length; i++) {
+            choices[i] = getString(labels[i]);
+        }
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.stream_layout_title)
+                .setSingleChoiceItems(choices, selectedIndex, (dialog, which) -> {
+                    if (which >= 0 && which < layouts.length) {
+                        dialog.dismiss();
+                        startStreamWithInputChoices(mode, layouts[which]);
+                    }
+                })
+                .setNegativeButton(android.R.string.cancel, (dialog, which) -> finish())
+                .setCancelable(false)
+                .show();
+    }
+
+    private void startStreamWithInputChoices(String mode, String layoutVariant) {
+        // Input mode only chooses which controls are visible. Keep the same video/control
+        // arrangement for Gaming, Browsing, and Vanilla so changing modes cannot undo Fold mode.
+        setControllerLayoutVariant(layoutVariant);
+        setControllerDisplayMode(mode);
+        streamInputModeChosen = true;
+        if (streamSurfaceAvailable && !attemptedConnection) {
+            attemptedConnection = true;
+            decoderRenderer.setRenderTarget(streamContainer.getSurface());
+            conn.start(new AndroidAudioRenderer(Game.this, prefConfig.playHostAudio),
+                    decoderRenderer, Game.this);
+        }
+    }
+
     private void initKeyboardController(){
         keyBoardController = new KeyBoardController(conn,(FrameLayout)rootView, this);
         keyBoardController.refreshLayout();
@@ -1296,8 +1409,17 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
 
     private void initVirtualController(){
         virtualController = new VirtualController(controllerHandler, (FrameLayout)rootView, this);
+        virtualController.setLayoutProfile(PreferenceManager.getDefaultSharedPreferences(this)
+                .getString(CONTROLLER_LAYOUT_PROFILE_PREF, "advanced"));
+        virtualController.setButtonStyle(getControllerButtonStyle());
+        virtualController.setDisplayMode(getControllerDisplayMode());
         virtualController.refreshLayout();
         virtualController.show();
+        View root = (View) rootView;
+        int controlsTop = activeFoldSplit != null ?
+                activeFoldSplit.videoPx + activeFoldSplit.hingePx :
+                (controlsConfinedToLowerHalf ? root.getHeight() / 2 : -1);
+        virtualController.setFoldSplitRegion(controlsTop, root.getHeight());
     }
 
     private void initkeyBoardLayoutController(){
@@ -1335,6 +1457,156 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
             return;
         }
         prefConfig.onscreenController= virtualController.switchShowHide() != 0;
+    }
+
+    public String getControllerLayoutProfile() {
+        return PreferenceManager.getDefaultSharedPreferences(this)
+                .getString(CONTROLLER_LAYOUT_PROFILE_PREF, "advanced");
+    }
+
+    public void setControllerLayoutProfile(String profile) {
+        if (!"basic".equals(profile) && !"standard".equals(profile)) {
+            profile = "advanced";
+        }
+        PreferenceManager.getDefaultSharedPreferences(this).edit()
+                .putString(CONTROLLER_LAYOUT_PROFILE_PREF, profile).apply();
+        if (virtualController == null) {
+            initVirtualController();
+        }
+        virtualController.setLayoutProfile(profile);
+        prefConfig.onscreenController = true;
+        LimeLog.info("On-screen controller layout profile set to " + profile);
+    }
+
+    public String getControllerButtonStyle() {
+        return PreferenceManager.getDefaultSharedPreferences(this)
+                .getString(CONTROLLER_BUTTON_STYLE_PREF, "xbox");
+    }
+
+    public String getControllerDisplayMode() {
+        return PreferenceManager.getDefaultSharedPreferences(this)
+                .getString(CONTROLLER_DISPLAY_MODE_PREF, "pc_browsing");
+    }
+
+    public String getControllerLayoutVariant() {
+        return PreferenceManager.getDefaultSharedPreferences(this)
+                .getString(CONTROLLER_LAYOUT_VARIANT_PREF, "full_screen_lower_half");
+    }
+
+    public void setControllerLayoutVariant(String variant) {
+        if (!"fold_split".equals(variant) && !"full_screen".equals(variant)) {
+            variant = "full_screen_lower_half";
+        }
+        PreferenceManager.getDefaultSharedPreferences(this).edit()
+                .putString(CONTROLLER_LAYOUT_VARIANT_PREF, variant).apply();
+        controlsConfinedToLowerHalf = "full_screen_lower_half".equals(variant);
+        forceFullScreenVideo = !"fold_split".equals(variant);
+        foldSplitForced = "fold_split".equals(variant);
+        updateFoldSplitLayout();
+    }
+
+    public void setControllerDisplayMode(String mode) {
+        if (!"gaming".equals(mode) && !"vanilla".equals(mode)) {
+            mode = "pc_browsing";
+        }
+        String previousMode = getControllerDisplayMode();
+        PreferenceManager.getDefaultSharedPreferences(this).edit()
+                .putString(CONTROLLER_DISPLAY_MODE_PREF, mode).apply();
+        if ("vanilla".equals(mode)) {
+            prefConfig.onscreenController = false;
+            applyMouseMode(0);
+            if (virtualController == null) {
+                // Keep the settings cog available in touch-only mode so the user can
+                // switch to gaming controls or PC browsing without ending the stream.
+                initVirtualController();
+            } else {
+                virtualController.setDisplayMode(mode);
+                virtualController.show();
+            }
+        } else {
+            if ("vanilla".equals(previousMode)) {
+                // Vanilla startup deliberately uses an untouched full-screen surface.
+                // Restore the user's selected controller placement when overlays return.
+                setControllerLayoutVariant(getControllerLayoutVariant());
+            }
+            prefConfig.onscreenController = true;
+            if ("pc_browsing".equals(mode)) {
+                applyMouseMode(2);
+            }
+            if (virtualController == null) {
+                initVirtualController();
+            } else {
+                virtualController.setDisplayMode(mode);
+                virtualController.show();
+            }
+            if ("gaming".equals(mode) && prefConfig.enableKeyboard && keyBoardController == null) {
+                initKeyboardController();
+            }
+        }
+        LimeLog.info("On-screen controller display mode set to " + mode);
+    }
+
+    public boolean handlePcBrowsingTrackpadTouch(MotionEvent event) {
+        TrackpadContext trackpad = trackpadContextMap[0] instanceof TrackpadContext ?
+                (TrackpadContext) trackpadContextMap[0] : null;
+        if (trackpad == null || conn == null) return false;
+        int action = event.getActionMasked();
+        int x = (int) event.getX();
+        int y = (int) event.getY();
+        switch (action) {
+            case MotionEvent.ACTION_DOWN:
+                pcBrowsingTrackpadActive = true;
+                if (pcBrowsingLeftButtonHeld) trackpad.beginExternalMouseDrag();
+                trackpad.setPointerCount(1);
+                trackpad.touchDownEvent(x, y, event.getEventTime(), true);
+                return true;
+            case MotionEvent.ACTION_MOVE:
+                trackpad.touchMoveEvent(x, y, event.getEventTime());
+                return true;
+            case MotionEvent.ACTION_UP:
+                trackpad.touchUpEvent(x, y, event.getEventTime());
+                trackpad.setPointerCount(0);
+                pcBrowsingTrackpadActive = false;
+                return true;
+            case MotionEvent.ACTION_CANCEL:
+                trackpad.cancelTouch();
+                trackpad.setPointerCount(0);
+                pcBrowsingTrackpadActive = false;
+                return true;
+            default:
+                return true;
+        }
+    }
+
+    public void setPcBrowsingMouseButton(byte button, boolean pressed) {
+        if (button == MouseButtonPacket.BUTTON_LEFT) {
+            if (pcBrowsingLeftButtonHeld == pressed) return;
+            pcBrowsingLeftButtonHeld = pressed;
+            if (pressed && pcBrowsingTrackpadActive && trackpadContextMap[0] instanceof TrackpadContext) {
+                ((TrackpadContext) trackpadContextMap[0]).beginExternalMouseDrag();
+            }
+        }
+        if (conn == null) return;
+        if (pressed) conn.sendMouseButtonDown(button);
+        else conn.sendMouseButtonUp(button);
+    }
+
+    public void sendPcBrowsingMouseClick(byte button) {
+        if (conn == null) return;
+        conn.sendMouseButtonDown(button);
+        conn.sendMouseButtonUp(button);
+    }
+
+    public void setControllerButtonStyle(String style) {
+        if (!"nintendo".equals(style) && !"playstation".equals(style)) {
+            style = "xbox";
+        }
+        PreferenceManager.getDefaultSharedPreferences(this).edit()
+                .putString(CONTROLLER_BUTTON_STYLE_PREF, style).apply();
+        if (virtualController != null) {
+            virtualController.setButtonStyle(style);
+        }
+        LimeLog.info("On-screen controller button style set to " + style);
     }
 
     private void setPreferredOrientationForActivity() {
@@ -1399,6 +1671,8 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
         if(keyBoardLayoutController != null){
             keyBoardLayoutController.refreshLayout();
         }
+
+        updateFoldSplitLayout();
 
         // Hide on-screen overlays in PiP mode
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -3651,6 +3925,20 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
     @SuppressLint("ClickableViewAccessibility")
     @Override
     public boolean onTouch(View view, MotionEvent event) {
+        if (view != null && view.getId() == R.id.backgroundTouchView && activeFoldSplit != null) {
+            int action = event.getActionMasked();
+            if (action == MotionEvent.ACTION_DOWN) {
+                swallowingFoldSplitBackgroundTouch = event.getY() >=
+                        activeFoldSplit.videoPx + activeFoldSplit.hingePx;
+            }
+            if (swallowingFoldSplitBackgroundTouch) {
+                if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+                    swallowingFoldSplitBackgroundTouch = false;
+                }
+                return true;
+            }
+        }
+
         if (event.getAction() == MotionEvent.ACTION_DOWN) {
             // Tell the OS not to buffer input events for us
             //
@@ -3911,6 +4199,7 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
 
                 connected = true;
                 connecting = false;
+                updateFoldSplitLayout();
                 updatePipAutoEnter();
 
                 // Hide the mouse cursor now after a short delay.
@@ -4014,6 +4303,27 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
     @Override
     public void setControllerLED(short controllerNumber, byte r, byte g, byte b) {
         controllerHandler.handleSetControllerLED(controllerNumber, r, g, b);
+    }
+
+    // Ack for a resolution change we requested (see requestStreamResolution()). width/height
+    // are what the host actually applied - re-init the active decoder at these values. The
+    // host's own capture/encode reinit already caused a brief black-frame gap by this point;
+    // this just catches the client's decoder up to the new size.
+    @Override
+    public void resolutionChanged(final int width, final int height, final boolean success) {
+        LimeLog.info("Resolution changed: " + width + "x" + height + " success=" + success);
+        if (!success || decoderRenderer == null) {
+            return;
+        }
+        runOnUiThread(() -> {
+            if (decoderRenderer == null) {
+                return;
+            }
+            int result = decoderRenderer.reinitAtResolution(width, height);
+            if (result != 0) {
+                LimeLog.severe("Failed to reinitialize decoder after resolution change");
+            }
+        });
     }
 
     @Override
