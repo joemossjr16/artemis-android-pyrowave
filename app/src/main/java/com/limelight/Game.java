@@ -753,18 +753,19 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
             }
         }
 
-        // PyroWave is opt-in and SDR only. The host selects it only if it offers PyroWave
-        // too; otherwise the stream uses one of the codecs above.
-        boolean offerPyroWave = prefConfig.enablePyroWave && !willStreamHdr && decoderRenderer.isPyroWaveSupported();
+        // PyroWave is opt-in. The host selects it only if it offers PyroWave too;
+        // otherwise the stream uses one of the codecs above. HDR is negotiated per
+        // frame over PyroWave's own wire container (see pyrowave_renderer.cpp's
+        // pushFrame()/finishSetup() and the host's src/pyrowave.cpp), not through a
+        // video-format bit here, so willStreamHdr no longer excludes it - this used
+        // to be SDR-only, but isn't anymore.
+        boolean offerPyroWave = prefConfig.enablePyroWave && decoderRenderer.isPyroWaveSupported();
         if (offerPyroWave) {
             supportedVideoFormats |= MoonBridge.VIDEO_FORMAT_PYROWAVE;
             if (prefConfig.enablePyroWave444) {
                 // Full-resolution chroma; hosts without PyroWave 4:4:4 fall back to 4:2:0.
                 supportedVideoFormats |= MoonBridge.VIDEO_FORMAT_PYROWAVE_444;
             }
-        }
-        else if (prefConfig.enablePyroWave && willStreamHdr) {
-            Toast.makeText(this, "PyroWave is enabled but not offered: it's SDR-only and this stream is HDR", Toast.LENGTH_LONG).show();
         }
         else if (prefConfig.enablePyroWave) {
             Toast.makeText(this, "This device cannot decode PyroWave (needs a 64-bit Vulkan 1.3 GPU)", Toast.LENGTH_LONG).show();
