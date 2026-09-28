@@ -1831,8 +1831,15 @@ public class MediaCodecDecoderRenderer extends VideoDecoderRenderer implements C
                 } else if ((videoFormat & MoonBridge.VIDEO_FORMAT_MASK_AV1) != 0) {
                     decoder = av1Decoder.getName();
                 } else if ((videoFormat & MoonBridge.VIDEO_FORMAT_MASK_PYROWAVE) != 0) {
-                    decoder = (videoFormat & MoonBridge.VIDEO_FORMAT_PYROWAVE_444) != 0 ?
-                            "PyroWave 4:4:4 (Vulkan)" : "PyroWave (Vulkan)";
+                    String chroma = (videoFormat & MoonBridge.VIDEO_FORMAT_PYROWAVE_444) != 0 ? " 4:4:4" : "";
+                    // The HDR10 bit rides in videoFormat purely to carry the client's request
+                    // through RTSP negotiation (see VIDEO_FORMAT_PYROWAVE_HDR10 in Limelight.h) -
+                    // PyroWave has no per-format HDR profile the way HEVC/AV1 do, so this is the
+                    // session's actual HDR state (decided once at stream start, same as the
+                    // wire container's own per-frame flag - see pyrowave_renderer.cpp's
+                    // finishSetup()), not just what was asked for.
+                    String hdr = (videoFormat & MoonBridge.VIDEO_FORMAT_PYROWAVE_HDR10) != 0 ? " HDR10" : " SDR";
+                    decoder = "PyroWave" + chroma + hdr + " (Vulkan)";
                 } else {
                     decoder = "(unknown)";
                 }
