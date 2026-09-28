@@ -29,7 +29,7 @@ public final class FoldPosture {
         public final int videoPx;
         public final int hingePx;
 
-        Split(int videoPx, int hingePx) {
+        public Split(int videoPx, int hingePx) {
             this.videoPx = videoPx;
             this.hingePx = hingePx;
         }

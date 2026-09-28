@@ -1186,14 +1186,38 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
         }
     }
 
+    // Last hinge the sensor reported (null = flat/shut/no hinge). Cached so the manual
+    // override toggle (menu_toggle_fold_split) can recompute layout without waiting for the
+    // sensor to fire again.
+    private Rect lastFoldHinge = null;
+    // Forces the split on regardless of what the hinge sensor reports (or whether this device
+    // even has one) - some foldables don't reliably report FoldingFeature state, so this is the
+    // fallback the game menu offers (see GameMenu.showAdvancedMenu()).
+    private boolean foldSplitForced = false;
+
     /**
-     * Applies (or clears) a tabletop fold split: video confined to the upper half at
-     * {@code hinge}, full-screen again when {@code hinge} is null or too shallow to split.
-     * The on-screen controller isn't repositioned automatically - its elements are already
-     * user-movable (see {@link VirtualController.ControllerMode#MoveButtons}), so dragging them
-     * into the lower half once is a one-time setup rather than something this needs to solve.
+     * Applies (or clears) a tabletop fold split: video confined to the upper half, full-screen
+     * again otherwise. The on-screen controller isn't repositioned automatically - its elements
+     * are already user-movable (see {@link VirtualController.ControllerMode#MoveButtons}), so
+     * dragging them into the lower half once is a one-time setup rather than something this
+     * needs to solve.
      */
     private void applyFoldSplit(Rect hinge) {
+        lastFoldHinge = hinge;
+        updateFoldSplitLayout();
+    }
+
+    /** Manual override for devices whose hinge sensor doesn't report reliably (or at all). */
+    public void toggleFoldSplit() {
+        foldSplitForced = !foldSplitForced;
+        updateFoldSplitLayout();
+    }
+
+    public boolean isFoldSplitForced() {
+        return foldSplitForced;
+    }
+
+    private void updateFoldSplitLayout() {
         if (streamContainer == null) {
             return;
         }
@@ -1201,8 +1225,19 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
         // rootView spans the whole window and is never itself resized by this method, so its
         // dimensions stay a stable reference even after streamContainer's own height shrinks.
         View root = (View) rootView;
-        com.limelight.ui.FoldPosture.Split split = hinge == null ? null :
-                com.limelight.ui.FoldPosture.split(hinge, root.getWidth(), root.getHeight());
+        com.limelight.ui.FoldPosture.Split split = null;
+        if (foldSplitForced) {
+            // No real hinge to go on (either none was ever reported, or the override is
+            // covering for a sensor the user isn't sure works) - an even top/bottom split with
+            // a thin gap is the reasonable default.
+            int height = root.getHeight();
+            if (height > 0) {
+                int gap = Math.max(1, height / 60);
+                split = new com.limelight.ui.FoldPosture.Split((height - gap) / 2, gap);
+            }
+        } else if (lastFoldHinge != null) {
+            split = com.limelight.ui.FoldPosture.split(lastFoldHinge, root.getWidth(), root.getHeight());
+        }
         if (split != null) {
             params.width = FrameLayout.LayoutParams.MATCH_PARENT;
             params.height = split.videoPx;
