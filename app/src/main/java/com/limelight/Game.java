@@ -723,8 +723,20 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
             }
         } catch (Throwable ignored) {}
 
-// Don't stream HDR if the decoder can't support it
-        if (willStreamHdr && !decoderRenderer.isHevcMain10Hdr10Supported() && !decoderRenderer.isAv1Main10Supported()) {
+// Don't stream HDR if the decoder can't support it. PyroWave has its own HDR10
+        // path (independent of these MediaCodec HEVC/AV1 profile checks), so a device
+        // that can only do PyroWave HDR shouldn't get downgraded to SDR here.
+        boolean willUsePyroWave = prefConfig.enablePyroWave && decoderRenderer.isPyroWaveSupported();
+        if (prefConfig.enableHdr && willUsePyroWave && !willStreamHdr) {
+            // PyroWave presents through its own raw Vulkan HDR10 swapchain (see
+            // pyrowave_renderer.cpp's finishSetup()/createSwapchain()), bypassing Android's
+            // window-compositor HDR pipeline entirely - so the Display.getHdrCapabilities()
+            // check above, which vetoed willStreamHdr, doesn't reflect what PyroWave can
+            // actually do here and would wrongly keep it SDR-only on panels/surfaces that
+            // don't report HDR_TYPE_HDR10 through that legacy API.
+            willStreamHdr = true;
+        }
+        if (willStreamHdr && !decoderRenderer.isHevcMain10Hdr10Supported() && !decoderRenderer.isAv1Main10Supported() && !willUsePyroWave) {
             willStreamHdr = false;
             Toast.makeText(this, "Decoder does not support HDR10 profile", Toast.LENGTH_LONG).show();
         }
@@ -765,6 +777,13 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
             if (prefConfig.enablePyroWave444) {
                 // Full-resolution chroma; hosts without PyroWave 4:4:4 fall back to 4:2:0.
                 supportedVideoFormats |= MoonBridge.VIDEO_FORMAT_PYROWAVE_444;
+            }
+            if (willStreamHdr) {
+                // Tells the host to actually encode HDR10 (P010) for this PyroWave
+                // stream - without this the RTSP dynamicRangeMode negotiation has no
+                // way to know PyroWave wants HDR (PyroWave has no distinct 10-bit
+                // format constant the way HEVC/AV1 do) and silently stays SDR.
+                supportedVideoFormats |= MoonBridge.VIDEO_FORMAT_PYROWAVE_HDR10;
             }
         }
         else if (prefConfig.enablePyroWave) {

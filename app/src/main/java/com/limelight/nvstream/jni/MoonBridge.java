@@ -22,6 +22,10 @@ public class MoonBridge {
     public static final int VIDEO_FORMAT_MASK_AV1 = 0xF000;
     public static final int VIDEO_FORMAT_PYROWAVE = 0x10000; // PyroWave intra-only wavelet codec (Moonlight extension)
     public static final int VIDEO_FORMAT_PYROWAVE_444 = 0x20000; // PyroWave with full-resolution chroma
+    // Not a selectable format on its own - OR it in alongside VIDEO_FORMAT_PYROWAVE(_444)
+    // to ask the host to encode PyroWave as HDR10. See Limelight.h for why this needs its
+    // own bit instead of reusing VIDEO_FORMAT_MASK_10BIT.
+    public static final int VIDEO_FORMAT_PYROWAVE_HDR10 = 0x40000;
     public static final int VIDEO_FORMAT_MASK_PYROWAVE = VIDEO_FORMAT_PYROWAVE | VIDEO_FORMAT_PYROWAVE_444;
     public static final int VIDEO_FORMAT_MASK_10BIT = 0x2200;
 
