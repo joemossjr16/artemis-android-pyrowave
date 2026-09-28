@@ -173,6 +173,7 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
     private ControllerHandler controllerHandler;
     private KeyboardTranslator keyboardTranslator;
     private VirtualController virtualController;
+    private com.limelight.ui.FoldPosture.Handle foldPostureHandle;
 
     private KeyBoardController keyBoardController;
 
@@ -489,6 +490,16 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
             FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) streamContainer.getLayoutParams();
             params.gravity = Gravity.CENTER_HORIZONTAL|Gravity.TOP;
         }
+
+        // Tabletop foldable posture: video keeps the upper half, the on-screen controller (or
+        // whatever the user has positioned) gets the lower half. Laying the device flat again
+        // restores full-screen video with nothing to undo. No-op on non-foldables or OS/library
+        // versions that don't support fold detection.
+        foldPostureHandle = com.limelight.ui.FoldPosture.observe(
+                this,
+                androidx.core.content.ContextCompat.getMainExecutor(this),
+                this::applyFoldSplit
+        );
         // Listen for touch events on the background touch view to enable trackpad mode
         // to work on areas outside of the StreamView itself. We use a separate View
         // for this rather than just handling it at the Activity level, because that
@@ -1175,6 +1186,36 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
         }
     }
 
+    /**
+     * Applies (or clears) a tabletop fold split: video confined to the upper half at
+     * {@code hinge}, full-screen again when {@code hinge} is null or too shallow to split.
+     * The on-screen controller isn't repositioned automatically - its elements are already
+     * user-movable (see {@link VirtualController.ControllerMode#MoveButtons}), so dragging them
+     * into the lower half once is a one-time setup rather than something this needs to solve.
+     */
+    private void applyFoldSplit(Rect hinge) {
+        if (streamContainer == null) {
+            return;
+        }
+        FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) streamContainer.getLayoutParams();
+        // rootView spans the whole window and is never itself resized by this method, so its
+        // dimensions stay a stable reference even after streamContainer's own height shrinks.
+        View root = (View) rootView;
+        com.limelight.ui.FoldPosture.Split split = hinge == null ? null :
+                com.limelight.ui.FoldPosture.split(hinge, root.getWidth(), root.getHeight());
+        if (split != null) {
+            params.width = FrameLayout.LayoutParams.MATCH_PARENT;
+            params.height = split.videoPx;
+            params.gravity = Gravity.TOP;
+        } else {
+            params.width = FrameLayout.LayoutParams.MATCH_PARENT;
+            params.height = FrameLayout.LayoutParams.MATCH_PARENT;
+            params.gravity = prefConfig.alignDisplayTopCenter ?
+                    (Gravity.CENTER_HORIZONTAL | Gravity.TOP) : Gravity.CENTER;
+        }
+        streamContainer.setLayoutParams(params);
+    }
+
     private void initKeyboardController(){
         keyBoardController = new KeyBoardController(conn,(FrameLayout)rootView, this);
         keyBoardController.refreshLayout();
@@ -1813,6 +1854,11 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
 
         instance = null;
         timerHandler.removeCallbacksAndMessages(null);
+
+        if (foldPostureHandle != null) {
+            foldPostureHandle.close();
+            foldPostureHandle = null;
+        }
 
         if (prefConfig.enableFullExDisplay) handleDisplayRemoved();
 

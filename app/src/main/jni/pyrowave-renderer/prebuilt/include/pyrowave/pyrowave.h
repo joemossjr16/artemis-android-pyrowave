@@ -418,6 +418,7 @@ typedef enum pyrowave_cpu_buffer_format
 	PYROWAVE_CPU_BUFFER_FORMAT_NV12 = 0, // 2 planes. Y packed in 8bpp, then CbCr packed in 16bpp. Only supported for encoding.
 	PYROWAVE_CPU_BUFFER_FORMAT_YUV420P = 1, // 3 planes. Y, Cb, Cr packed into separate planes. Native format for pyrowave.
 	PYROWAVE_CPU_BUFFER_FORMAT_YUV444P = 2, // 3 planes. Y, Cb, Cr packed into separate planes. Native format for pyrowave.
+	PYROWAVE_CPU_BUFFER_FORMAT_BGRA8 = 3,   // 1 plane. Packed BGRA8 (32bpp). GPU-converted from YUV.
 	PYROWAVE_CPU_BUFFER_FORMAT_INT_MAX = 0x7fffffff
 } pyrowave_cpu_buffer_format;
 
