@@ -1242,6 +1242,17 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
             params.width = FrameLayout.LayoutParams.MATCH_PARENT;
             params.height = split.videoPx;
             params.gravity = Gravity.TOP;
+            // The lower half is otherwise just empty black space - show the on-screen
+            // controller (initializing it if this is the first time) so there's actually
+            // something there to drag into it. Doesn't force it back off when the split
+            // clears; that's the existing toggle's call.
+            if (!onExternelDisplay) {
+                if (virtualController == null) {
+                    initVirtualController();
+                } else {
+                    virtualController.show();
+                }
+            }
         } else {
             params.width = FrameLayout.LayoutParams.MATCH_PARENT;
             params.height = FrameLayout.LayoutParams.MATCH_PARENT;
