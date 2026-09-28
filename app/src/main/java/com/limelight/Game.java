@@ -1254,6 +1254,17 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
                     (Gravity.CENTER_HORIZONTAL | Gravity.TOP) : Gravity.CENTER;
         }
         streamContainer.setLayoutParams(params);
+        // Fitting the stream's full original aspect ratio into the split's squeezed region
+        // just produces a small, letterboxed rectangle floating in a bigger black area -
+        // confirmed to look "awkward" on a real Z Fold, since the stream's actual resolution
+        // isn't renegotiated to match the smaller region. Crop-to-fill instead while the split
+        // is active: no black bars, some content cropped instead. Reverts to the user's own
+        // scale mode preference once the split clears.
+        boolean fill = split != null || prefConfig.videoScaleMode == PreferenceConfiguration.ScaleMode.FILL;
+        streamContainer.setFillDisplay(fill);
+        if (decoderRenderer != null) {
+            decoderRenderer.setPyroWaveFillMode(split != null);
+        }
     }
 
     /**

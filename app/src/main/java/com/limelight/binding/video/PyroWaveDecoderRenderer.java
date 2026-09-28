@@ -87,10 +87,23 @@ public class PyroWaveDecoderRenderer {
         }
     }
 
+    /**
+     * Crop-to-fill (true) instead of the default fit-to-contain (false): no black bars, but
+     * some content is cropped instead of the whole picture staying visible. present() reads
+     * this fresh every frame, so it's safe to call from any thread at any time (e.g. Game.java
+     * toggling it as a fold split comes and goes) - no re-setup needed.
+     */
+    public void setFillMode(boolean fill) {
+        if (handle != 0) {
+            nativeSetFillMode(handle, fill);
+        }
+    }
+
     private static native boolean nativeIsAvailable();
     private static native long nativeCreate(Surface surface, int width, int height, int frameRate, boolean chroma444,
                                              int displayAspectWidth, int displayAspectHeight);
     private static native int nativeSubmitFrame(long handle, byte[] data, int length);
     private static native int nativeGetLastGpuDecodeUs(long handle);
+    private static native void nativeSetFillMode(long handle, boolean fill);
     private static native void nativeDestroy(long handle);
 }

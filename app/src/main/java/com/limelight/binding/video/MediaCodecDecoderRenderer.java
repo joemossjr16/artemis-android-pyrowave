@@ -136,6 +136,13 @@ public class MediaCodecDecoderRenderer extends VideoDecoderRenderer implements C
 
     // Set when the stream negotiated PyroWave, which is decoded with Vulkan instead of MediaCodec.
     private PyroWaveDecoderRenderer pyroWaveRenderer;
+
+    /** Forwards to {@link PyroWaveDecoderRenderer#setFillMode}; a no-op when PyroWave isn't active. */
+    public void setPyroWaveFillMode(boolean fill) {
+        if (pyroWaveRenderer != null) {
+            pyroWaveRenderer.setFillMode(fill);
+        }
+    }
     // Sub-millisecond PyroWave decode time carried between frames (stats are in whole ms).
     private long pyroWaveDecodeUsRemainder;
     private volatile boolean stopping;

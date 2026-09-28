@@ -27,6 +27,7 @@
 #include <cstring>
 #include <iterator>
 #include <memory>
+#include <atomic>
 #include <mutex>
 #include <vector>
 
@@ -343,6 +344,12 @@ namespace {
                 return SUBMIT_SKIPPED;
             }
             return present() ? SUBMIT_OK : SUBMIT_ERROR;
+        }
+
+        // Callable from any thread (e.g. the UI thread reacting to a fold split) - present()
+        // reads it fresh every frame, no recreation needed.
+        void setFillMode(bool fill) {
+            fillMode.store(fill, std::memory_order_relaxed);
         }
 
     private:
@@ -1113,9 +1120,20 @@ namespace {
 
             // Fit the stream into the surface, preserving the true display aspect ratio
             // (displayWidth/Height), not necessarily the wire/decode size (width/height) -
-            // see create()'s comment on autoInvertVideoResolution.
-            const float scale = std::min(float(swapchainExtent.width) / float(displayWidth),
-                                         float(swapchainExtent.height) / float(displayHeight));
+            // see create()'s comment on autoInvertVideoResolution. fillMode swaps min for max:
+            // crop-to-fill (no bars, some content cropped) instead of fit-to-contain (whole
+            // picture visible, black bars) - the surface's own scissor (below) clips the
+            // overflow, same as StreamView's existing fillDisplay does for MediaCodec. Used for
+            // the fold split (see Game.java's updateFoldSplitLayout()): fitting the picture's
+            // full original aspect ratio into a squeezed region just produces a small,
+            // letterboxed rectangle floating in a bigger black area - confirmed to look
+            // "awkward" on a real Z Fold - since the stream's actual resolution isn't
+            // renegotiated to match the smaller region.
+            const float scale = fillMode.load(std::memory_order_relaxed)
+                ? std::max(float(swapchainExtent.width) / float(displayWidth),
+                           float(swapchainExtent.height) / float(displayHeight))
+                : std::min(float(swapchainExtent.width) / float(displayWidth),
+                           float(swapchainExtent.height) / float(displayHeight));
             VkViewport viewport = {};
             viewport.width = float(displayWidth) * scale;
             viewport.height = float(displayHeight) * scale;
@@ -1232,6 +1250,8 @@ namespace {
         // (see create()'s comment) - defaults to width/height when the caller has no distinct one.
         uint32_t displayWidth = 0;
         uint32_t displayHeight = 0;
+        // Toggled live via nativeSetFillMode() (see present()'s comment on the viewport scale).
+        std::atomic<bool> fillMode {false};
         bool chroma444 = false;
         // Set from the first frame's PYRW header (see pushFrame()); planes,
         // swapchain format, and pipeline shader selection all defer to this,
@@ -1461,6 +1481,15 @@ JNIEXPORT jint JNICALL
 Java_com_limelight_binding_video_PyroWaveDecoderRenderer_nativeGetLastGpuDecodeUs(JNIEnv *, jclass, jlong handle) {
     auto *renderer = reinterpret_cast<Renderer *>(handle);
     return renderer != nullptr ? jint(renderer->lastGpuDecodeUs) : 0;
+}
+
+JNIEXPORT void JNICALL
+Java_com_limelight_binding_video_PyroWaveDecoderRenderer_nativeSetFillMode(JNIEnv *, jclass, jlong handle,
+                                                                           jboolean fill) {
+    auto *renderer = reinterpret_cast<Renderer *>(handle);
+    if (renderer != nullptr) {
+        renderer->setFillMode(fill);
+    }
 }
 
 JNIEXPORT void JNICALL
