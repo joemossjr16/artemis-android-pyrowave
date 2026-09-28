@@ -1258,14 +1258,19 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
 
     /**
      * Undoes prepareDisplayForRendering()'s Java-level SurfaceView aspect lock for PyroWave
-     * sessions, which do their own correct aspect-preserving fit internally (see
-     * MediaCodecDecoderRenderer.isPyroWaveActive()'s doc for why stacking both is wrong).
-     * Called once, right after PyroWave's own setup() succeeds.
+     * sessions, which do their own correct aspect-preserving fit internally. Called once,
+     * right after PyroWave's own setup() succeeds - which runs on the native decode callback
+     * thread, not the UI thread, so this posts over to it rather than touching the View
+     * directly (setDesiredAspectRatio() calls requestLayout(), which crashes with
+     * CalledFromWrongThreadException off the UI thread - confirmed via a real SIGABRT/
+     * tombstone on a Z Fold before this was posted).
      */
     public void resetStreamAspectRatioLock() {
-        if (streamContainer != null) {
-            streamContainer.setDesiredAspectRatio(0);
-        }
+        runOnUiThread(() -> {
+            if (streamContainer != null) {
+                streamContainer.setDesiredAspectRatio(0);
+            }
+        });
     }
 
     private void initKeyboardController(){
