@@ -821,7 +821,11 @@ public class MediaCodecDecoderRenderer extends VideoDecoderRenderer implements C
         if ((format & MoonBridge.VIDEO_FORMAT_MASK_PYROWAVE) != 0) {
             pyroWaveRenderer = new PyroWaveDecoderRenderer();
             boolean chroma444 = (format & MoonBridge.VIDEO_FORMAT_PYROWAVE_444) != 0;
-            if (!pyroWaveRenderer.setup(renderTarget, width, height, redrawRate, chroma444)) {
+            // initialWidth/initialHeight are already un-inverted (see their assignment just
+            // above) - the true display aspect ratio, same as what MediaFormat gets for the
+            // MediaCodec path. width/height stay the real wire/decode size PyroWave needs.
+            if (!pyroWaveRenderer.setup(renderTarget, width, height, redrawRate, chroma444,
+                    initialWidth, initialHeight)) {
                 LimeLog.severe("PyroWave renderer initialization failed");
                 pyroWaveRenderer.cleanup();
                 pyroWaveRenderer = null;

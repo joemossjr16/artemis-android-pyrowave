@@ -270,12 +270,25 @@ namespace {
             destroy();
         }
 
-        bool create(ANativeWindow *nativeWindow, int streamWidth, int streamHeight, int frameRate, bool fullChroma) {
+        bool create(ANativeWindow *nativeWindow, int streamWidth, int streamHeight, int frameRate, bool fullChroma,
+                    int displayAspectWidth, int displayAspectHeight) {
             window = nativeWindow;
             chroma444 = fullChroma;
             frameRateHz = frameRate > 0 ? frameRate : 60;
             width = uint32_t(streamWidth);
             height = uint32_t(streamHeight);
+            // The wire/decode size (width/height above) can differ from the size the picture
+            // should actually be displayed at: Game.java's autoInvertVideoResolution asks the
+            // host for a swapped (landscape-shaped) stream in portrait mode, since hardware
+            // encoders/decoders often handle landscape better, then expects the client to
+            // present it at the true (un-swapped) aspect ratio - MediaCodecDecoderRenderer
+            // does this itself via initialWidth/initialHeight for MediaCodec's path, and
+            // passes those same corrected values here as displayAspectWidth/Height so
+            // present()'s viewport fit (see below) uses the right aspect instead of the
+            // wire size, which produced letterboxed ("skinny") output confirmed on a real
+            // Z Fold. Falls back to the wire size if the caller doesn't have a distinct one.
+            displayWidth = displayAspectWidth > 0 ? uint32_t(displayAspectWidth) : width;
+            displayHeight = displayAspectHeight > 0 ? uint32_t(displayAspectHeight) : height;
             // Planes/swapchain/pipeline depend on whether the stream turns out to be
             // HDR10, which isn't known until the first frame's PYRW header (see
             // pushFrame()/finishSetup()) - only the HDR-agnostic device/decoder setup
@@ -1098,12 +1111,14 @@ namespace {
             rpBegin.pClearValues = &clear;
             vk.CmdBeginRenderPass(commandBuffer, &rpBegin, VK_SUBPASS_CONTENTS_INLINE);
 
-            // Fit the stream into the surface, preserving its aspect ratio.
-            const float scale = std::min(float(swapchainExtent.width) / float(width),
-                                         float(swapchainExtent.height) / float(height));
+            // Fit the stream into the surface, preserving the true display aspect ratio
+            // (displayWidth/Height), not necessarily the wire/decode size (width/height) -
+            // see create()'s comment on autoInvertVideoResolution.
+            const float scale = std::min(float(swapchainExtent.width) / float(displayWidth),
+                                         float(swapchainExtent.height) / float(displayHeight));
             VkViewport viewport = {};
-            viewport.width = float(width) * scale;
-            viewport.height = float(height) * scale;
+            viewport.width = float(displayWidth) * scale;
+            viewport.height = float(displayHeight) * scale;
             viewport.x = (float(swapchainExtent.width) - viewport.width) / 2.0f;
             viewport.y = (float(swapchainExtent.height) - viewport.height) / 2.0f;
             viewport.maxDepth = 1.0f;
@@ -1213,6 +1228,10 @@ namespace {
         ANativeWindow *window = nullptr;
         uint32_t width = 0;
         uint32_t height = 0;
+        // The aspect ratio present()'s viewport fit targets, which can differ from width/height
+        // (see create()'s comment) - defaults to width/height when the caller has no distinct one.
+        uint32_t displayWidth = 0;
+        uint32_t displayHeight = 0;
         bool chroma444 = false;
         // Set from the first frame's PYRW header (see pushFrame()); planes,
         // swapchain format, and pipeline shader selection all defer to this,
@@ -1400,7 +1419,9 @@ Java_com_limelight_binding_video_PyroWaveDecoderRenderer_nativeIsAvailable(JNIEn
 JNIEXPORT jlong JNICALL
 Java_com_limelight_binding_video_PyroWaveDecoderRenderer_nativeCreate(JNIEnv *env, jclass, jobject surface,
                                                                       jint width, jint height, jint frameRate,
-                                                                      jboolean chroma444) {
+                                                                      jboolean chroma444,
+                                                                      jint displayAspectWidth,
+                                                                      jint displayAspectHeight) {
     if (surface == nullptr || width <= 0 || height <= 0 || (!chroma444 && ((width & 1) || (height & 1)))) {
         LOGE("PyroWave needs a surface and positive dimensions, even for 4:2:0 (%dx%d)", width, height);
         return 0;
@@ -1410,10 +1431,11 @@ Java_com_limelight_binding_video_PyroWaveDecoderRenderer_nativeCreate(JNIEnv *en
         return 0;
     }
     auto renderer = std::make_unique<Renderer>();
-    if (!renderer->create(window, width, height, frameRate, chroma444)) {
+    if (!renderer->create(window, width, height, frameRate, chroma444, displayAspectWidth, displayAspectHeight)) {
         return 0;  // The renderer releases the window.
     }
-    LOGI("PyroWave renderer ready for %dx%d %s", width, height, chroma444 ? "4:4:4" : "4:2:0");
+    LOGI("PyroWave renderer ready for %dx%d %s (display aspect %dx%d)", width, height,
+         chroma444 ? "4:4:4" : "4:2:0", displayAspectWidth, displayAspectHeight);
     return reinterpret_cast<jlong>(renderer.release());
 }
 

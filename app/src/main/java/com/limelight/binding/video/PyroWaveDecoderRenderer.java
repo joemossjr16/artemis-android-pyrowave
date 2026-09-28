@@ -44,12 +44,23 @@ public class PyroWaveDecoderRenderer {
         return LIBRARY_LOADED && nativeIsAvailable();
     }
 
-    public boolean setup(Surface surface, int width, int height, int frameRate, boolean chroma444) {
+    /**
+     * @param width the true wire/decode width - what the host actually encoded.
+     * @param height the true wire/decode height.
+     * @param displayAspectWidth the width the picture should be presented at, if different from
+     *                           {@code width} (e.g. MediaCodecDecoderRenderer's initialWidth,
+     *                           when autoInvertVideoResolution asked the host for a swapped
+     *                           landscape-shaped stream in portrait mode). Pass {@code width}
+     *                           itself when there's no distinction to make.
+     * @param displayAspectHeight likewise for height.
+     */
+    public boolean setup(Surface surface, int width, int height, int frameRate, boolean chroma444,
+                          int displayAspectWidth, int displayAspectHeight) {
         cleanup();
         if (!LIBRARY_LOADED || surface == null || !surface.isValid()) {
             return false;
         }
-        handle = nativeCreate(surface, width, height, frameRate, chroma444);
+        handle = nativeCreate(surface, width, height, frameRate, chroma444, displayAspectWidth, displayAspectHeight);
         return handle != 0;
     }
 
@@ -77,7 +88,8 @@ public class PyroWaveDecoderRenderer {
     }
 
     private static native boolean nativeIsAvailable();
-    private static native long nativeCreate(Surface surface, int width, int height, int frameRate, boolean chroma444);
+    private static native long nativeCreate(Surface surface, int width, int height, int frameRate, boolean chroma444,
+                                             int displayAspectWidth, int displayAspectHeight);
     private static native int nativeSubmitFrame(long handle, byte[] data, int length);
     private static native int nativeGetLastGpuDecodeUs(long handle);
     private static native void nativeDestroy(long handle);
