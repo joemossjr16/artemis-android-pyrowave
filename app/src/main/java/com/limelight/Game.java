@@ -774,7 +774,17 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
         boolean offerPyroWave = prefConfig.enablePyroWave && decoderRenderer.isPyroWaveSupported();
         if (offerPyroWave) {
             supportedVideoFormats |= MoonBridge.VIDEO_FORMAT_PYROWAVE;
-            if (prefConfig.enablePyroWave444) {
+            // 4:4:4 + HDR10 together hits a bug in PyroWave's own wavelet decode
+            // (confirmed decode-stage, not anything in this client or the host
+            // wrapper - see PyroWave HDR10 commit history). The host will downgrade
+            // that combination to 4:2:0 on its own, but only during RTSP ANNOUNCE -
+            // by then this client has already locked in "4:4:4" from the earlier
+            // DESCRIBE exchange and sized its decoder's planes for full-resolution
+            // chroma, so a host-side-only downgrade just breaks the two ends'
+            // agreement on plane size instead of fixing anything. Don't offer 4:4:4
+            // at all when HDR is wanted, so the mismatch can't happen in the first
+            // place. HDR wins over 4:4:4 chroma when both are requested.
+            if (prefConfig.enablePyroWave444 && !willStreamHdr) {
                 // Full-resolution chroma; hosts without PyroWave 4:4:4 fall back to 4:2:0.
                 supportedVideoFormats |= MoonBridge.VIDEO_FORMAT_PYROWAVE_444;
             }
