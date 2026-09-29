@@ -51,11 +51,14 @@ import com.limelight.utils.PerformanceDataTracker;
 import com.limelight.utils.ServerHelper;
 import com.limelight.utils.ShortcutHelper;
 import com.limelight.utils.SpinnerDialog;
+import com.limelight.utils.TrafficStatsHelper;
 import com.limelight.utils.UiHelper;
 
 import android.annotation.SuppressLint;
 import android.annotation.TargetApi;
-import android.app.AlertDialog;
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
+import com.google.android.material.card.MaterialCardView;
+import androidx.appcompat.app.AlertDialog;
 import android.app.PictureInPictureParams;
 import android.app.Service;
 import android.content.ClipData;
@@ -69,9 +72,12 @@ import android.content.SharedPreferences;
 import android.content.pm.ActivityInfo;
 import android.content.pm.PackageManager;
 import android.content.res.Configuration;
+import android.graphics.Canvas;
+import android.graphics.Paint;
 import android.graphics.Outline;
 import android.graphics.Point;
 import android.graphics.Rect;
+import android.graphics.RectF;
 import android.hardware.display.DisplayManager;
 import android.hardware.input.InputManager;
 import android.media.AudioManager;
@@ -83,6 +89,8 @@ import android.os.Handler;
 import android.os.IBinder;
 import android.os.PersistableBundle;
 import android.os.PowerManager;
+import android.os.Process;
+import android.os.SystemClock;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
 import android.util.Rational;
@@ -103,6 +111,7 @@ import android.view.ViewParent;
 import android.view.Window;
 import android.view.WindowManager;
 import android.widget.FrameLayout;
+import android.widget.LinearLayout;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -182,6 +191,7 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
     private KeyBoardLayoutController keyBoardLayoutController;
 
     private PreferenceConfiguration prefConfig;
+    private boolean commitTextInputEnabledForBrowsingKeyboard;
     private SharedPreferences tombstonePrefs;
 
     private int displayWidth;
@@ -1339,48 +1349,234 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
 
     private void showStreamInputModeDialog() {
         String[] modes = new String[] {"gaming", "pc_browsing", "vanilla"};
-        int[] labels = new int[] {R.string.stream_input_mode_gaming, R.string.stream_input_mode_browsing,
+        int[] titles = new int[] {R.string.stream_input_mode_gaming, R.string.stream_input_mode_browsing,
                 R.string.stream_input_mode_vanilla};
-        CharSequence[] choices = new CharSequence[modes.length];
+        int[] summaries = new int[] {R.string.stream_input_mode_gaming_summary,
+                R.string.stream_input_mode_browsing_summary, R.string.stream_input_mode_vanilla_summary};
+        int[] previews = new int[] {StreamChoicePreview.GAMING, StreamChoicePreview.BROWSING,
+                StreamChoicePreview.VANILLA};
         String selectedMode = getControllerDisplayMode();
         int selectedIndex = 1;
         for (int i = 0; i < modes.length; i++) {
-            choices[i] = getString(labels[i]);
             if (modes[i].equals(selectedMode)) selectedIndex = i;
         }
-        new AlertDialog.Builder(this)
+        MaterialAlertDialogBuilder builder = new MaterialAlertDialogBuilder(this)
                 .setTitle(R.string.stream_input_mode_title)
-                .setSingleChoiceItems(choices, selectedIndex, (dialog, which) -> {
-                    if (which >= 0 && which < modes.length) {
-                        dialog.dismiss();
-                        showStreamControlLayoutDialog(modes[which]);
-                    }
-                })
                 .setNegativeButton(android.R.string.cancel, (dialog, which) -> finish())
-                .setCancelable(false)
-                .show();
+                .setCancelable(false);
+        AlertDialog dialog = builder.create();
+        LinearLayout choices = createStreamChoiceList();
+        for (int i = 0; i < modes.length; i++) {
+            final String mode = modes[i];
+            choices.addView(createStreamChoiceCard(titles[i], summaries[i], previews[i], modes[i],
+                    i == selectedIndex, () -> {
+                        dialog.dismiss();
+                        showStreamControlLayoutDialog(mode);
+                    }));
+        }
+        dialog.setView(choices);
+        dialog.show();
     }
 
     private void showStreamControlLayoutDialog(String mode) {
         String[] layouts = new String[] {"full_screen_lower_half", "fold_split"};
-        int[] labels = new int[] {R.string.stream_layout_fullscreen_lower_half, R.string.stream_layout_fold_split};
-        CharSequence[] choices = new CharSequence[layouts.length];
+        int[] titles = new int[] {R.string.stream_layout_fullscreen_lower_half, R.string.stream_layout_fold_split};
+        int[] summaries = new int[] {R.string.stream_layout_fullscreen_lower_half_summary,
+                R.string.stream_layout_fold_split_summary};
+        int[] previews = new int[] {StreamChoicePreview.FULL_SCREEN_OVERLAY, StreamChoicePreview.FOLD_SPLIT};
         String selectedLayout = getControllerLayoutVariant();
         int selectedIndex = "fold_split".equals(selectedLayout) ? 1 : 0;
-        for (int i = 0; i < layouts.length; i++) {
-            choices[i] = getString(labels[i]);
-        }
-        new AlertDialog.Builder(this)
+        MaterialAlertDialogBuilder builder = new MaterialAlertDialogBuilder(this)
                 .setTitle(R.string.stream_layout_title)
-                .setSingleChoiceItems(choices, selectedIndex, (dialog, which) -> {
-                    if (which >= 0 && which < layouts.length) {
-                        dialog.dismiss();
-                        startStreamWithInputChoices(mode, layouts[which]);
-                    }
-                })
                 .setNegativeButton(android.R.string.cancel, (dialog, which) -> finish())
-                .setCancelable(false)
-                .show();
+                .setCancelable(false);
+        AlertDialog dialog = builder.create();
+        LinearLayout choices = createStreamChoiceList();
+        for (int i = 0; i < layouts.length; i++) {
+            final String layout = layouts[i];
+            choices.addView(createStreamChoiceCard(titles[i], summaries[i], previews[i], mode,
+                    i == selectedIndex, () -> {
+                        dialog.dismiss();
+                        startStreamWithInputChoices(mode, layout);
+                    }));
+        }
+        dialog.setView(choices);
+        dialog.show();
+    }
+
+    private LinearLayout createStreamChoiceList() {
+        LinearLayout choices = new LinearLayout(this);
+        choices.setOrientation(LinearLayout.VERTICAL);
+        choices.setPadding(dp(20), dp(8), dp(20), dp(4));
+        return choices;
+    }
+
+    private MaterialCardView createStreamChoiceCard(int titleId, int summaryId, int previewType, String mode,
+                                                     boolean selected, Runnable onClick) {
+        MaterialCardView card = new MaterialCardView(this);
+        card.setCheckable(true);
+        card.setChecked(selected);
+        card.setClickable(true);
+        card.setFocusable(true);
+        card.setRadius(dp(20));
+        card.setStrokeWidth(dp(selected ? 2 : 1));
+        card.setStrokeColor(androidx.core.content.ContextCompat.getColor(this,
+                selected ? R.color.m3Primary : R.color.m3Outline));
+        card.setCardBackgroundColor(androidx.core.content.ContextCompat.getColor(this,
+                selected ? R.color.m3PrimaryContainer : R.color.m3SurfaceContainer));
+
+        LinearLayout.LayoutParams cardParams = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        cardParams.bottomMargin = dp(12);
+        card.setLayoutParams(cardParams);
+
+        LinearLayout row = new LinearLayout(this);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setPadding(dp(12), dp(12), dp(16), dp(12));
+
+        StreamChoicePreview preview = new StreamChoicePreview(this, previewType, mode);
+        preview.setContentDescription(getString(titleId) + " preview");
+        row.addView(preview, new LinearLayout.LayoutParams(dp(100), dp(88)));
+
+        LinearLayout text = new LinearLayout(this);
+        text.setOrientation(LinearLayout.VERTICAL);
+        text.setPadding(dp(16), 0, 0, 0);
+        TextView title = new TextView(this);
+        title.setText(titleId);
+        title.setTextSize(16);
+        title.setTextColor(androidx.core.content.ContextCompat.getColor(this, R.color.m3OnSurface));
+        title.setTypeface(title.getTypeface(), android.graphics.Typeface.BOLD);
+        TextView summary = new TextView(this);
+        summary.setText(summaryId);
+        summary.setTextSize(13);
+        summary.setTextColor(androidx.core.content.ContextCompat.getColor(this, R.color.m3OnSurfaceVariant));
+        LinearLayout.LayoutParams summaryParams = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        summaryParams.topMargin = dp(4);
+        text.addView(title);
+        text.addView(summary, summaryParams);
+        row.addView(text, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        card.addView(row);
+        card.setOnClickListener(v -> onClick.run());
+        return card;
+    }
+
+    private int dp(int value) {
+        return Math.round(value * getResources().getDisplayMetrics().density);
+    }
+
+    private static final class StreamChoicePreview extends View {
+        static final int GAMING = 0;
+        static final int BROWSING = 1;
+        static final int VANILLA = 2;
+        static final int FULL_SCREEN_OVERLAY = 3;
+        static final int FOLD_SPLIT = 4;
+
+        private final int type;
+        private final String mode;
+        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+
+        StreamChoicePreview(Context context, int type, String mode) {
+            super(context);
+            this.type = type;
+            this.mode = mode;
+        }
+
+        private float dp(float value) {
+            return value * getResources().getDisplayMetrics().density;
+        }
+
+        @Override
+        protected void onDraw(Canvas canvas) {
+            super.onDraw(canvas);
+            float scale = Math.min(getWidth() / dp(100f), getHeight() / dp(88f));
+            canvas.save();
+            canvas.translate((getWidth() - dp(100f) * scale) / 2f, (getHeight() - dp(88f) * scale) / 2f);
+            canvas.scale(scale, scale);
+            float d = getResources().getDisplayMetrics().density;
+
+            paint.setStyle(Paint.Style.FILL);
+            paint.setColor(getResources().getColor(R.color.m3Background));
+            canvas.drawRoundRect(new RectF(28*d, 2*d, 72*d, 86*d), 8*d, 8*d, paint);
+            paint.setColor(getResources().getColor(R.color.m3Outline));
+            paint.setStyle(Paint.Style.STROKE);
+            paint.setStrokeWidth(1.5f*d);
+            canvas.drawRoundRect(new RectF(28*d, 2*d, 72*d, 86*d), 8*d, 8*d, paint);
+            paint.setStyle(Paint.Style.FILL);
+            paint.setColor(getResources().getColor(R.color.m3SurfaceHigh));
+            canvas.drawRoundRect(new RectF(32*d, 7*d, 68*d, 81*d), 4*d, 4*d, paint);
+
+            if (type == FULL_SCREEN_OVERLAY) {
+                drawVideo(canvas, 32*d, 7*d, 68*d, 81*d, d);
+                drawSelectedControls(canvas, d, true);
+            } else if (type == FOLD_SPLIT) {
+                drawVideo(canvas, 32*d, 7*d, 68*d, 43*d, d);
+                paint.setColor(getResources().getColor(R.color.m3Background));
+                canvas.drawRect(32*d, 44*d, 68*d, 81*d, paint);
+                drawSelectedControls(canvas, d, false);
+            } else {
+                drawVideo(canvas, 32*d, 7*d, 68*d, 48*d, d);
+                if (type == GAMING) {
+                    drawGamepad(canvas, d, true);
+                } else if (type == BROWSING) {
+                    paint.setColor(getResources().getColor(R.color.m3SurfaceContainer));
+                    canvas.drawRoundRect(new RectF(36*d, 52*d, 64*d, 69*d), 3*d, 3*d, paint);
+                    paint.setColor(getResources().getColor(R.color.m3Primary));
+                    canvas.drawCircle(50*d, 60*d, 3*d, paint);
+                    paint.setColor(getResources().getColor(R.color.m3Outline));
+                    canvas.drawRoundRect(new RectF(38*d, 71*d, 49*d, 76*d), 2*d, 2*d, paint);
+                    canvas.drawRoundRect(new RectF(51*d, 71*d, 62*d, 76*d), 2*d, 2*d, paint);
+                } else {
+                    paint.setStyle(Paint.Style.STROKE);
+                    paint.setStrokeWidth(2*d);
+                    paint.setColor(getResources().getColor(R.color.m3Primary));
+                    canvas.drawCircle(50*d, 59*d, 5*d, paint);
+                    paint.setStyle(Paint.Style.FILL);
+                }
+            }
+            canvas.restore();
+        }
+
+        private void drawVideo(Canvas canvas, float left, float top, float right, float bottom, float d) {
+            paint.setColor(getResources().getColor(R.color.m3TertiaryContainer));
+            canvas.drawRoundRect(new RectF(left, top, right, bottom), 3*d, 3*d, paint);
+            paint.setColor(getResources().getColor(R.color.m3OnTertiaryContainer));
+            canvas.drawCircle((left + right) / 2f, (top + bottom) / 2f, 4*d, paint);
+        }
+
+        private void drawGamepad(Canvas canvas, float d, boolean overlay) {
+            paint.setColor(getResources().getColor(overlay ? R.color.m3SurfaceContainer : R.color.m3PrimaryContainer));
+            canvas.drawRoundRect(new RectF(35*d, 53*d, 65*d, 77*d), 6*d, 6*d, paint);
+            paint.setColor(getResources().getColor(R.color.m3OnSurface));
+            canvas.drawRoundRect(new RectF(40*d, 60*d, 42*d, 70*d), 1*d, 1*d, paint);
+            canvas.drawRoundRect(new RectF(36*d, 64*d, 46*d, 66*d), 1*d, 1*d, paint);
+            paint.setColor(getResources().getColor(R.color.m3Primary));
+            canvas.drawCircle(57*d, 61*d, 2.5f*d, paint);
+            canvas.drawCircle(61*d, 65*d, 2.5f*d, paint);
+            canvas.drawCircle(53*d, 65*d, 2.5f*d, paint);
+            canvas.drawCircle(57*d, 69*d, 2.5f*d, paint);
+        }
+
+        private void drawSelectedControls(Canvas canvas, float d, boolean overlay) {
+            if ("pc_browsing".equals(mode)) {
+                paint.setColor(getResources().getColor(overlay ? R.color.m3SurfaceContainer : R.color.m3PrimaryContainer));
+                canvas.drawRoundRect(new RectF(35*d, 53*d, 65*d, 68*d), 3*d, 3*d, paint);
+                paint.setColor(getResources().getColor(R.color.m3Primary));
+                canvas.drawCircle(50*d, 60*d, 3*d, paint);
+                paint.setColor(getResources().getColor(R.color.m3OnSurface));
+                canvas.drawRoundRect(new RectF(37*d, 71*d, 49*d, 76*d), 2*d, 2*d, paint);
+                canvas.drawRoundRect(new RectF(51*d, 71*d, 63*d, 76*d), 2*d, 2*d, paint);
+            } else if ("vanilla".equals(mode)) {
+                paint.setStyle(Paint.Style.STROKE);
+                paint.setStrokeWidth(2*d);
+                paint.setColor(getResources().getColor(R.color.m3Primary));
+                canvas.drawCircle(50*d, 63*d, 5*d, paint);
+                paint.setStyle(Paint.Style.FILL);
+            } else {
+                drawGamepad(canvas, d, overlay);
+            }
+        }
     }
 
     private void startStreamWithInputChoices(String mode, String layoutVariant) {
@@ -2920,6 +3116,14 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
         } else {
             LimeLog.info("Toggling keyboard overlay");
             InputMethodManager inputManager = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
+            if ("pc_browsing".equals(getControllerDisplayMode()) && !prefConfig.enableCommitText) {
+                // Gesture/voice keyboards deliver committed text through InputConnection;
+                // normal key-by-key games keep the existing opt-in preference unchanged.
+                commitTextInputEnabledForBrowsingKeyboard = true;
+                streamContainer.setCommitTextEnabled(true);
+                streamContainer.requestFocus();
+                inputManager.restartInput(streamContainer);
+            }
             inputManager.toggleSoftInput(0, 0);
         }
     }
@@ -4322,6 +4526,19 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
             int result = decoderRenderer.reinitAtResolution(width, height);
             if (result != 0) {
                 LimeLog.severe("Failed to reinitialize decoder after resolution change");
+                return;
+            }
+
+            // The stream view was initially measured using the full-screen aspect ratio.
+            // Fold split changes the host's encoded dimensions (for example, 1848x2448 to
+            // 1848x1224), so keep MediaCodec's SurfaceView in step with the acknowledged
+            // stream or StreamContainer will constrain it to the old, half-width portrait
+            // aspect. PyroWave clears this lock and handles its own presentation aspect.
+            if (streamContainer != null && width > 0 && height > 0 &&
+                    (decoderRenderer.getActiveVideoFormat() & MoonBridge.VIDEO_FORMAT_MASK_PYROWAVE) == 0) {
+                streamContainer.setDesiredAspectRatio((double) width / (double) height);
+                LimeLog.info("Updated stream surface aspect ratio to " + width + "x" + height +
+                        " after host resolution change");
             }
         });
     }
@@ -4492,6 +4709,68 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
         });
     }
 
+    /** Measures incoming traffic for the active PC stream without injecting test traffic. */
+    public void runStreamBandwidthTest() {
+        final long startBytes = TrafficStatsHelper.getPackageRxBytes(Process.myUid());
+        if (startBytes == android.net.TrafficStats.UNSUPPORTED) {
+            new MaterialAlertDialogBuilder(this)
+                    .setTitle(R.string.stream_bandwidth_test_title)
+                    .setMessage(R.string.stream_bandwidth_test_unavailable)
+                    .setPositiveButton(android.R.string.ok, null).show();
+            return;
+        }
+
+        final long startTime = SystemClock.elapsedRealtime();
+        final Handler handler = new Handler(Looper.getMainLooper());
+        final androidx.appcompat.app.AlertDialog[] progressDialog = new androidx.appcompat.app.AlertDialog[1];
+        final Runnable[] sampler = new Runnable[1];
+        final long[] previousBytes = {startBytes};
+        final long[] previousTime = {startTime};
+        final float[] latestMbps = {0f};
+        String displayPcName = pcName == null || pcName.trim().isEmpty() ? getString(R.string.stream_bandwidth_test_this_pc) : pcName;
+
+        sampler[0] = () -> {
+            if (isFinishing() || progressDialog[0] == null || !progressDialog[0].isShowing()) return;
+            long now = SystemClock.elapsedRealtime();
+            long rxBytes = TrafficStatsHelper.getPackageRxBytes(Process.myUid());
+            if (rxBytes >= previousBytes[0] && now > previousTime[0]) {
+                latestMbps[0] = (rxBytes - previousBytes[0]) * 8f / (now - previousTime[0]) / 1000f;
+            }
+            previousBytes[0] = rxBytes;
+            previousTime[0] = now;
+            long elapsedMs = now - startTime;
+            if (elapsedMs >= 10_000) {
+                float averageMbps = (rxBytes - startBytes) * 8f / elapsedMs / 1000f;
+                long rttInfo = MoonBridge.getEstimatedRttInfo();
+                String latency = rttInfo < 0 ? getString(R.string.stream_bandwidth_test_unavailable_value) :
+                        getString(R.string.stream_bandwidth_test_latency, (int) (rttInfo >> 32), (int) rttInfo);
+                float packetLoss = decoderRenderer == null ? Float.NaN : decoderRenderer.getRecentPacketLossPercent();
+                String loss = Float.isNaN(packetLoss) ? getString(R.string.stream_bandwidth_test_unavailable_value) :
+                        getString(R.string.stream_bandwidth_test_packet_loss, packetLoss);
+                String message = getString(R.string.stream_bandwidth_test_result,
+                        String.format(Locale.getDefault(), "%.2f", averageMbps), latency, loss);
+                progressDialog[0].dismiss();
+                new MaterialAlertDialogBuilder(this)
+                        .setTitle(getString(R.string.stream_bandwidth_test_result_title, displayPcName))
+                        .setMessage(message)
+                        .setPositiveButton(android.R.string.ok, null).show();
+                return;
+            }
+            progressDialog[0].setMessage(getString(R.string.stream_bandwidth_test_progress,
+                    10 - elapsedMs / 1000, String.format(Locale.getDefault(), "%.2f", latestMbps[0])));
+            handler.postDelayed(sampler[0], 1000);
+        };
+
+        progressDialog[0] = new MaterialAlertDialogBuilder(this)
+                .setTitle(getString(R.string.stream_bandwidth_test_title) + " — " + displayPcName)
+                .setMessage(getString(R.string.stream_bandwidth_test_progress, 10, "—"))
+                .setNegativeButton(android.R.string.cancel, null)
+                .create();
+        progressDialog[0].setOnDismissListener(dialog -> handler.removeCallbacks(sampler[0]));
+        progressDialog[0].show();
+        handler.postDelayed(sampler[0], 1000);
+    }
+
     @Override
     public void onUsbPermissionPromptStarting() {
         // Disable PiP auto-enter while the USB permission prompt is on-screen. This prevents
@@ -4640,6 +4919,10 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
      * @param context The context to use to decide where to show the dialog.
      */
     public void selectMouseMode(Context context){
+        selectMouseMode(context, null);
+    }
+
+    public void selectMouseMode(Context context, Runnable onBack){
         String[] allModes = getResources().getStringArray(R.array.mouse_mode_names);
 
         Set<String> allowedLabels = new HashSet<>(Arrays.asList(
@@ -4666,7 +4949,7 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
         }
         final MouseModeOption[] optionArray = options.toArray(new MouseModeOption[0]);
 
-        new AlertDialog.Builder(context)
+        new MaterialAlertDialogBuilder(context)
                 .setTitle(getString(R.string.game_menu_select_mouse_mode))
                 .setItems(labels, (dialog, which) -> {
                     dialog.dismiss();
@@ -4682,6 +4965,9 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
                                     .apply();
                         }
                     }
+                })
+                .setOnCancelListener(dialog -> {
+                    if (onBack != null) onBack.run();
                 })
                 .create()
                 .show();
@@ -4776,7 +5062,7 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
         } else {
             context = this;
         }
-        AlertDialog.Builder builder = new AlertDialog.Builder(context);
+        MaterialAlertDialogBuilder builder = new MaterialAlertDialogBuilder(context);
         builder.setTitle(R.string.game_dialog_title_quit_confirm);
         builder.setMessage(R.string.game_dialog_message_quit_confirm);
 
@@ -4839,7 +5125,7 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
 
     @Override
     public boolean handleCommitText(CharSequence text) {
-        if (!prefConfig.enableCommitText || conn == null) {
+        if (!(prefConfig.enableCommitText || commitTextInputEnabledForBrowsingKeyboard) || conn == null) {
             return false;
         }
         enqueueCommitText(text.toString());
@@ -4848,7 +5134,7 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
 
     @Override
     public boolean handleDeleteSurroundingText(int beforeLength, int afterLength) {
-        if (!prefConfig.enableCommitText || conn == null) {
+        if (!(prefConfig.enableCommitText || commitTextInputEnabledForBrowsingKeyboard) || conn == null) {
             return false;
         }
         // Send backspace events for deleted preceding characters

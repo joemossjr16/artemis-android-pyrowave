@@ -24,6 +24,7 @@ import androidx.appcompat.app.AppCompatActivity;
 
 import com.limelight.preferences.PreferenceConfiguration;
 import com.limelight.utils.DeviceUtils;
+import com.limelight.utils.M3Motion;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -43,6 +44,7 @@ public class DebugInfoActivity extends AppCompatActivity implements View.OnClick
         PreferenceConfiguration.applyAmoledThemeIfEnabled(this);
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_axitest);
+        M3Motion.enter(findViewById(android.R.id.content), 0);
 
         tx_gamepad_info = findViewById(R.id.tx_game_pad_info);
         TextView tx_content = findViewById(R.id.tx_content);

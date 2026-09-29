@@ -51,6 +51,7 @@ public class ComputerManagerService extends Service {
     private static final int INITIAL_POLL_TRIES = 2;
     private static final int EMPTY_LIST_THRESHOLD = 3;
     private static final int POLL_DATA_TTL_MS = 30000;
+    private static final int PAIR_STATUS_CONFIRMATION_MS = 500;
 
     private final ComputerManagerBinder binder = new ComputerManagerBinder();
 
@@ -639,53 +640,43 @@ public class ComputerManagerService extends Service {
         startParallelPollThread(ipv6Info, uniqueAddresses);
 
         try {
-            // Check local first
-            synchronized (localInfo) {
-                while (!localInfo.complete) {
-                    localInfo.wait();
+            // Keep address precedence, but don't let a local endpoint's intermittent stale
+            // PairStatus override a confirmed pairing reported by another address for this UUID.
+            ParallelPollTuple[] pollOrder = { localInfo, manualInfo, remoteInfo, ipv6Info };
+            ComputerDetails firstSuccessfulResult = null;
+            long confirmationDeadline = Long.MAX_VALUE;
+
+            for (ParallelPollTuple tuple : pollOrder) {
+                synchronized (tuple) {
+                    while (!tuple.complete) {
+                        if (firstSuccessfulResult == null) {
+                            tuple.wait();
+                        } else {
+                            long remainingMs = confirmationDeadline - SystemClock.elapsedRealtime();
+                            if (remainingMs <= 0) {
+                                break;
+                            }
+                            tuple.wait(remainingMs);
+                        }
+                    }
                 }
 
-                if (localInfo.returnedDetails != null) {
-                    localInfo.returnedDetails.activeAddress = localInfo.address;
-                    return localInfo.returnedDetails;
+                if (tuple.returnedDetails == null) {
+                    continue;
+                }
+
+                tuple.returnedDetails.activeAddress = tuple.address;
+                if (firstSuccessfulResult == null) {
+                    firstSuccessfulResult = tuple.returnedDetails;
+                    confirmationDeadline = SystemClock.elapsedRealtime() + PAIR_STATUS_CONFIRMATION_MS;
+                }
+
+                if (tuple.returnedDetails.pairState == PairingManager.PairState.PAIRED) {
+                    return tuple.returnedDetails;
                 }
             }
 
-            // Now manual
-            synchronized (manualInfo) {
-                while (!manualInfo.complete) {
-                    manualInfo.wait();
-                }
-
-                if (manualInfo.returnedDetails != null) {
-                    manualInfo.returnedDetails.activeAddress = manualInfo.address;
-                    return manualInfo.returnedDetails;
-                }
-            }
-
-            // Now remote IPv4
-            synchronized (remoteInfo) {
-                while (!remoteInfo.complete) {
-                    remoteInfo.wait();
-                }
-
-                if (remoteInfo.returnedDetails != null) {
-                    remoteInfo.returnedDetails.activeAddress = remoteInfo.address;
-                    return remoteInfo.returnedDetails;
-                }
-            }
-
-            // Now global IPv6
-            synchronized (ipv6Info) {
-                while (!ipv6Info.complete) {
-                    ipv6Info.wait();
-                }
-
-                if (ipv6Info.returnedDetails != null) {
-                    ipv6Info.returnedDetails.activeAddress = ipv6Info.address;
-                    return ipv6Info.returnedDetails;
-                }
-            }
+            return firstSuccessfulResult;
         } finally {
             // Stop any further polling if we've found a working address or we've been
             // interrupted by an attempt to stop polling.
@@ -695,7 +686,6 @@ public class ComputerManagerService extends Service {
             ipv6Info.interrupt();
         }
 
-        return null;
     }
 
     private boolean pollComputer(ComputerDetails details) throws InterruptedException {

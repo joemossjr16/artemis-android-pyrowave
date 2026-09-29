@@ -3,12 +3,16 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:padding="10dp">
+    android:padding="16dp"
+    android:background="@color/m3Background">
 
     <Button
         android:id="@+id/bt_vibrator"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:layout_marginBottom="8dp"
+        android:backgroundTint="@color/m3SurfaceHigh"
+        android:textColor="@color/m3OnSurface"
         android:onClick="onClick"
         android:text="@string/debug_info_test_device_vibration" />
 
@@ -16,6 +20,9 @@
         android:id="@+id/bt_update_gamepad"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:layout_marginBottom="8dp"
+        android:backgroundTint="@color/m3SurfaceHigh"
+        android:textColor="@color/m3OnSurface"
         android:onClick="onClick"
         android:text="@string/debug_info_refresh_gamepad_list" />
 
@@ -23,6 +30,9 @@
         android:id="@+id/bt_vibrator_gamepad"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:layout_marginBottom="8dp"
+        android:backgroundTint="@color/m3SurfaceHigh"
+        android:textColor="@color/m3OnSurface"
         android:onClick="onClick"
         android:text="@string/debug_info_test_gamepad_rumble" />
 
@@ -35,6 +45,8 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_weight="1"
+            android:backgroundTint="@color/m3SurfaceHigh"
+            android:textColor="@color/m3OnSurface"
             android:onClick="onClick"
             android:text="@string/debug_info_vibration_amplitude" />
 
@@ -43,6 +55,8 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_weight="1"
+            android:backgroundTint="@color/m3SurfaceHigh"
+            android:textColor="@color/m3OnSurface"
             android:onClick="onClick"
             android:text="@string/debug_info_stop_vibration" />
 
@@ -54,17 +68,23 @@
         android:id="@+id/tx_content"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:layout_marginBottom="8dp"
+        android:textColor="@color/m3OnSurfaceVariant"
         android:text="@string/debug_info_refresh_gamepad_info" />
 
     <ScrollView
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:layout_marginTop="10dp">
+        android:layout_marginTop="10dp"
+        android:background="@drawable/m3_profile_card_background"
+        android:padding="16dp">
 
         <TextView
             android:id="@+id/tx_game_pad_info"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content" />
+            android:layout_height="wrap_content"
+            android:textColor="@color/m3OnSurface" />
     </ScrollView>
 
 

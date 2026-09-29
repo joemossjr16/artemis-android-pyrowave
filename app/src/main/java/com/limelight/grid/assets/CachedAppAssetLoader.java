@@ -1,6 +1,8 @@
 package com.limelight.grid.assets;
 
+import android.content.Context;
 import android.content.res.Resources;
+import android.graphics.Canvas;
 import android.graphics.Bitmap;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
@@ -18,6 +20,8 @@ import com.limelight.nvstream.http.NvApp;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.ref.WeakReference;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
@@ -49,24 +53,47 @@ public class CachedAppAssetLoader {
             new LinkedBlockingQueue<Runnable>(MAX_PENDING_NETWORK_LOADS),
             new ThreadPoolExecutor.DiscardOldestPolicy());
 
+    private final Context context;
     private final ComputerDetails computer;
     private final double scalingDivider;
     private final NetworkAssetLoader networkLoader;
     private final MemoryAssetLoader memoryLoader;
     private final DiskAssetLoader diskLoader;
     private final Bitmap placeholderBitmap;
-    private final Bitmap noAppImageBitmap;
+    private final Map<Integer, Bitmap> namedPlaceholderBitmaps = new HashMap<>();
 
-    public CachedAppAssetLoader(ComputerDetails computer, double scalingDivider,
+    public CachedAppAssetLoader(Context context, ComputerDetails computer, double scalingDivider,
                                 NetworkAssetLoader networkLoader, MemoryAssetLoader memoryLoader,
-                                DiskAssetLoader diskLoader, Bitmap noAppImageBitmap) {
+                                DiskAssetLoader diskLoader) {
+        this.context = context;
         this.computer = computer;
         this.scalingDivider = scalingDivider;
         this.networkLoader = networkLoader;
         this.memoryLoader = memoryLoader;
         this.diskLoader = diskLoader;
-        this.noAppImageBitmap = noAppImageBitmap;
         this.placeholderBitmap = Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888);
+    }
+
+    private Bitmap getAppPlaceholderBitmap(NvApp app) {
+        String name = app.getAppName() == null ? "" : app.getAppName().trim().toLowerCase(java.util.Locale.ROOT);
+        int drawableId = R.drawable.app_art_game;
+        if (name.contains("desktop")) {
+            drawableId = R.drawable.app_art_desktop;
+        } else if (name.contains("steam")) {
+            drawableId = R.drawable.app_art_steam;
+        }
+
+        synchronized (namedPlaceholderBitmaps) {
+            Bitmap cached = namedPlaceholderBitmaps.get(drawableId);
+            if (cached != null) return cached;
+
+            Drawable drawable = context.getResources().getDrawable(drawableId);
+            Bitmap bitmap = Bitmap.createBitmap(300, 450, Bitmap.Config.ARGB_8888);
+            drawable.setBounds(0, 0, bitmap.getWidth(), bitmap.getHeight());
+            drawable.draw(new Canvas(bitmap));
+            namedPlaceholderBitmaps.put(drawableId, bitmap);
+            return bitmap;
+        }
     }
 
     public void cancelBackgroundLoads() {
@@ -198,7 +225,8 @@ public class CachedAppAssetLoader {
                 // Set off another loader task on the network executor. This time our AsyncDrawable
                 // will use the app image placeholder bitmap, rather than an empty bitmap.
                 LoaderTask task = new LoaderTask(imageView, textView, false);
-                AsyncDrawable asyncDrawable = new AsyncDrawable(imageView.getResources(), noAppImageBitmap, task);
+                AsyncDrawable asyncDrawable = new AsyncDrawable(imageView.getResources(),
+                        getAppPlaceholderBitmap(tuple.app), task);
                 imageView.setImageDrawable(asyncDrawable);
                 imageView.startAnimation(AnimationUtils.loadAnimation(imageView.getContext(), R.anim.boxart_fadein));
                 imageView.setVisibility(View.VISIBLE);
@@ -232,7 +260,8 @@ public class CachedAppAssetLoader {
                             @Override
                             public void onAnimationEnd(Animation animation) {
                                 // Fade in the new box art
-                                imageView.setImageBitmap(bitmap.bitmap);
+                                imageView.setImageBitmap(isBitmapPlaceholder(bitmap) ?
+                                        getAppPlaceholderBitmap(tuple.app) : bitmap.bitmap);
                                 imageView.startAnimation(AnimationUtils.loadAnimation(imageView.getContext(), R.anim.boxart_fadein));
                             }
 
@@ -243,7 +272,8 @@ public class CachedAppAssetLoader {
                     }
                     else {
                         // View is invisible already, so just fade in the new art
-                        imageView.setImageBitmap(bitmap.bitmap);
+                        imageView.setImageBitmap(isBitmapPlaceholder(bitmap) ?
+                                getAppPlaceholderBitmap(tuple.app) : bitmap.bitmap);
                         imageView.startAnimation(AnimationUtils.loadAnimation(imageView.getContext(), R.anim.boxart_fadein));
                         imageView.setVisibility(View.VISIBLE);
                     }
@@ -349,7 +379,7 @@ public class CachedAppAssetLoader {
         if (bmp != null) {
             // Show the bitmap immediately
             imgView.setVisibility(View.VISIBLE);
-            imgView.setImageBitmap(bmp.bitmap);
+            imgView.setImageBitmap(isBitmapPlaceholder(bmp) ? getAppPlaceholderBitmap(app) : bmp.bitmap);
 
             // Show the text if it's a placeholder bitmap
             textView.setVisibility(isBitmapPlaceholder(bmp) ? View.VISIBLE : View.GONE);

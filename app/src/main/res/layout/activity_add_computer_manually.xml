@@ -1,52 +1,77 @@
-<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
-    android:background="?android:attr/colorBackground"
-    android:layout_width="fill_parent"
-    android:layout_height="fill_parent"
-    android:paddingBottom="@dimen/activity_vertical_margin"
-    android:paddingLeft="@dimen/activity_horizontal_margin"
-    android:paddingRight="@dimen/activity_horizontal_margin"
-    android:paddingTop="@dimen/activity_vertical_margin"
-    tools:context=".preferences.AddComputerManually" >
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/m3Background"
+    android:orientation="vertical"
+    android:padding="24dp"
+    tools:context=".preferences.AddComputerManually">
 
     <TextView
         android:id="@+id/manuallyAddPcText"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
         android:text="@string/title_add_pc"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:preferKeepClear="true"
-        android:layout_centerHorizontal="true"
-        android:textAppearance="?android:attr/textAppearanceLarge"
-        android:layout_alignParentTop="true"/>
+        android:textColor="@color/m3OnSurface"
+        android:textSize="28sp"
+        android:textStyle="bold" />
 
-    <EditText
-        android:id="@+id/hostTextView"
-        android:layout_width="wrap_content"
+    <TextView
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_below="@+id/manuallyAddPcText"
-        android:layout_toLeftOf="@+id/addPcButton"
-        android:layout_toStartOf="@+id/addPcButton"
-        android:layout_marginTop="25dp"
-        android:layout_alignParentLeft="true"
-        android:layout_alignParentStart="true"
-        android:ems="10"
-        android:singleLine="true"
-        android:preferKeepClear="true"
-        android:inputType="textNoSuggestions"
-        android:hint="@string/ip_hint" >
-        
-        <requestFocus />
-    </EditText>
+        android:layout_marginTop="8dp"
+        android:layout_marginBottom="24dp"
+        android:text="@string/m3_add_pc_help"
+        android:textColor="@color/m3OnSurfaceVariant"
+        android:textSize="15sp" />
 
-    <Button
-        android:id="@+id/addPcButton"
-        android:layout_width="wrap_content"
+    <com.google.android.material.card.MaterialCardView
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="25dp"
-        android:layout_below="@+id/manuallyAddPcText"
-        android:layout_alignParentRight="true"
-        android:layout_alignParentEnd="true"
-        android:preferKeepClear="true"
-        android:text="@android:string/ok"/>
-	
-</RelativeLayout>
+        app:cardBackgroundColor="@color/m3SurfaceContainer"
+        app:cardCornerRadius="28dp"
+        app:cardElevation="0dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="20dp">
+
+            <com.google.android.material.textfield.TextInputLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="@string/ip_hint"
+                app:boxBackgroundMode="filled"
+                app:boxBackgroundColor="@color/m3SurfaceHigh"
+                app:boxCornerRadiusTopStart="18dp"
+                app:boxCornerRadiusTopEnd="18dp"
+                app:boxCornerRadiusBottomStart="18dp"
+                app:boxCornerRadiusBottomEnd="18dp"
+                app:boxStrokeColor="@color/m3Primary">
+
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/hostTextView"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:imeOptions="actionDone"
+                    android:inputType="textNoSuggestions"
+                    android:singleLine="true"
+                    android:textColor="@color/m3OnSurface"
+                    android:textColorHint="@color/m3OnSurfaceVariant" />
+            </com.google.android.material.textfield.TextInputLayout>
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/addPcButton"
+                android:layout_width="match_parent"
+                android:layout_height="54dp"
+                android:layout_marginTop="18dp"
+                android:text="@string/m3_add_pc_action"
+                android:textSize="15sp"
+                app:cornerRadius="28dp" />
+        </LinearLayout>
+    </com.google.android.material.card.MaterialCardView>
+</LinearLayout>

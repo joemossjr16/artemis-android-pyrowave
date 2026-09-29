@@ -11,6 +11,7 @@ import android.widget.RelativeLayout;
 import android.widget.TextView;
 
 import com.limelight.R;
+import com.limelight.utils.M3Motion;
 
 import java.util.ArrayList;
 
@@ -70,6 +71,9 @@ public abstract class GenericGridAdapter<T> extends BaseAdapter {
         ProgressBar prgView = convertView.findViewById(R.id.grid_spinner);
 
         populateView(convertView, imgView, gridMask, prgView, txtView, overlayView, itemList.get(i));
+
+        M3Motion.enter(convertView, i);
+        M3Motion.attachPressFeedback(convertView);
 
         return convertView;
     }

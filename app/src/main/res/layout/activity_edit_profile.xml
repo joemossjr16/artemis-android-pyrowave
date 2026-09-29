@@ -3,12 +3,17 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical">
+    android:orientation="vertical"
+    android:background="@color/m3Background">
 
     <androidx.appcompat.widget.Toolbar
         android:id="@+id/toolbar"
         android:layout_width="match_parent"
-        android:layout_height="?attr/actionBarSize" />
+        android:layout_height="?attr/actionBarSize"
+        android:background="@color/m3Background"
+        android:elevation="0dp"
+        app:titleTextColor="@color/m3OnSurface"
+        app:navigationIconTint="@color/m3OnSurface" />
 
     <FrameLayout
         android:id="@+id/preferences_container"

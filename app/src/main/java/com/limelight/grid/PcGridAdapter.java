@@ -6,6 +6,7 @@ import android.widget.ImageView;
 import android.widget.ProgressBar;
 import android.widget.RelativeLayout;
 import android.widget.TextView;
+import androidx.core.content.ContextCompat;
 
 import com.limelight.PcView;
 import com.limelight.R;
@@ -72,6 +73,39 @@ public class PcGridAdapter extends GenericGridAdapter<PcView.ComputerObject> {
         }
         else {
             txtView.setAlpha(0.4f);
+        }
+
+        TextView subtitleView = parentView.findViewById(R.id.pc_card_subtitle);
+        if (subtitleView != null) {
+            subtitleView.setText(obj.details.localAddress != null ?
+                    R.string.m3_local_pc : R.string.m3_remote_pc);
+        }
+
+        TextView statusView = parentView.findViewById(R.id.pc_card_status);
+        if (statusView != null) {
+            if (obj.details.state == ComputerDetails.State.ONLINE) {
+                if (obj.details.pairState == PairingManager.PairState.NOT_PAIRED) {
+                    statusView.setText(R.string.m3_pairing_needed);
+                    statusView.setTextColor(ContextCompat.getColor(context, R.color.m3OnPrimaryContainer));
+                    statusView.setBackgroundTintList(android.content.res.ColorStateList.valueOf(
+                            ContextCompat.getColor(context, R.color.m3PrimaryContainer)));
+                } else {
+                    statusView.setText(R.string.m3_online);
+                    statusView.setTextColor(ContextCompat.getColor(context, R.color.m3OnTertiaryContainer));
+                    statusView.setBackgroundTintList(android.content.res.ColorStateList.valueOf(
+                            ContextCompat.getColor(context, R.color.m3TertiaryContainer)));
+                }
+            } else if (obj.details.state == ComputerDetails.State.UNKNOWN) {
+                statusView.setText(R.string.m3_searching);
+                statusView.setTextColor(ContextCompat.getColor(context, R.color.m3OnSurfaceVariant));
+                statusView.setBackgroundTintList(android.content.res.ColorStateList.valueOf(
+                        ContextCompat.getColor(context, R.color.m3SurfaceHigh)));
+            } else {
+                statusView.setText(R.string.m3_offline);
+                statusView.setTextColor(ContextCompat.getColor(context, R.color.m3OnSurfaceVariant));
+                statusView.setBackgroundTintList(android.content.res.ColorStateList.valueOf(
+                        ContextCompat.getColor(context, R.color.m3SurfaceHigh)));
+            }
         }
 
         if (obj.details.state == ComputerDetails.State.OFFLINE) {

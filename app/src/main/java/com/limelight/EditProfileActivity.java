@@ -20,6 +20,7 @@ import androidx.preference.PreferenceManager;
 import com.limelight.preferences.PreferenceConfiguration;
 import com.limelight.preferences.StreamSettings;
 import com.limelight.profiles.ProfilesManager;
+import com.limelight.utils.M3Motion;
 import com.limelight.profiles.SettingsProfile;
 import com.limelight.utils.UiHelper;
 
@@ -39,6 +40,7 @@ public class EditProfileActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_edit_profile);
+        M3Motion.enter(findViewById(android.R.id.content), 0);
 
         UiHelper.setLocale(this);
 

@@ -2,10 +2,12 @@ package com.limelight;
 
 import java.io.IOException;
 import java.io.StringReader;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 
 import com.google.android.material.floatingactionbutton.ExtendedFloatingActionButton;
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.limelight.computers.ComputerManagerListener;
 import com.limelight.computers.ComputerManagerService;
 import com.limelight.grid.AppGridAdapter;
@@ -19,6 +21,7 @@ import com.limelight.ui.AdapterFragment;
 import com.limelight.ui.AdapterFragmentCallbacks;
 import com.limelight.utils.CacheHelper;
 import com.limelight.utils.Dialog;
+import com.limelight.utils.M3Motion;
 import com.limelight.utils.ServerHelper;
 import com.limelight.utils.ShortcutHelper;
 import com.limelight.utils.SpinnerDialog;
@@ -45,6 +48,7 @@ import android.view.ContextMenu.ContextMenuInfo;
 import android.widget.AbsListView;
 import android.widget.AdapterView;
 import android.widget.AdapterView.OnItemClickListener;
+import android.widget.GridView;
 import android.widget.ImageView;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -57,6 +61,7 @@ import org.xmlpull.v1.XmlPullParserException;
 
 public class AppView extends AppCompatActivity implements AdapterFragmentCallbacks {
     private AppGridAdapter appGridAdapter;
+    private GridView appGridView;
     private String uuidString;
     private ShortcutHelper shortcutHelper;
 
@@ -306,6 +311,9 @@ public class AppView extends AppCompatActivity implements AdapterFragmentCallbac
         UiHelper.setLocale(this);
 
         setContentView(R.layout.activity_app_view);
+        M3Motion.enter(findViewById(android.R.id.content), 0);
+
+        findViewById(R.id.appBackButton).setOnClickListener(v -> finish());
 
         // Allow floating expanded PiP overlays while browsing apps
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -441,6 +449,54 @@ public class AppView extends AppCompatActivity implements AdapterFragmentCallbac
         }
     }
 
+    private void showAppOptions(AppObject app, View targetView) {
+        List<Integer> optionIds = new ArrayList<>();
+        List<String> labels = new ArrayList<>();
+        if (lastRunningAppId == 0) {
+            optionIds.add(prefConfig.useVirtualDisplay ? START_OR_RESUME_ID : START_WITH_VDISPLAY);
+            labels.add(getString(prefConfig.useVirtualDisplay ? R.string.applist_menu_start_primarydisplay : R.string.applist_menu_start_vdisplay));
+        } else if (lastRunningAppId == app.app.getAppId()) {
+            optionIds.add(START_OR_RESUME_ID);
+            labels.add(getString(R.string.applist_menu_resume));
+            optionIds.add(QUIT_ID);
+            labels.add(getString(R.string.applist_menu_quit));
+        } else if (prefConfig.useVirtualDisplay) {
+            optionIds.add(START_WITH_QUIT_VDISPLAY);
+            labels.add(getString(R.string.applist_menu_quit_and_start));
+            optionIds.add(START_WITH_QUIT);
+            labels.add(getString(R.string.applist_menu_quit_and_start_primarydisplay));
+        } else {
+            optionIds.add(START_WITH_QUIT);
+            labels.add(getString(R.string.applist_menu_quit_and_start));
+            optionIds.add(START_WITH_QUIT_VDISPLAY);
+            labels.add(getString(R.string.applist_menu_quit_and_start_vdisplay));
+        }
+
+        if (lastRunningAppId != app.app.getAppId() || app.isHidden) {
+            optionIds.add(HIDE_APP_ID);
+            labels.add(getString(app.isHidden ? R.string.applist_menu_show_app : R.string.applist_menu_hide_app));
+        }
+        optionIds.add(VIEW_DETAILS_ID);
+        labels.add(getString(R.string.applist_menu_details));
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            ImageView appImageView = targetView.findViewById(R.id.grid_image);
+            if (appImageView != null && appImageView.getDrawable() instanceof BitmapDrawable &&
+                    ((BitmapDrawable) appImageView.getDrawable()).getBitmap() != null) {
+                optionIds.add(CREATE_SHORTCUT_ID);
+                labels.add(getString(R.string.applist_menu_scut));
+            }
+        }
+        optionIds.add(EXPORT_LAUNCHER_FILE_ID);
+        labels.add(getString(R.string.applist_menu_export_launcher));
+
+        new MaterialAlertDialogBuilder(this)
+                .setTitle(app.app.getAppName())
+                .setItems(labels.toArray(new CharSequence[0]), (dialog, which) ->
+                        handleAppContextAction(optionIds.get(which), app, targetView))
+                .show();
+    }
+
     @Override
     public void onCreateContextMenu(ContextMenu menu, View v, ContextMenuInfo menuInfo) {
         super.onCreateContextMenu(menu, v, menuInfo);
@@ -506,7 +562,10 @@ public class AppView extends AppCompatActivity implements AdapterFragmentCallbac
     public boolean onContextItemSelected(MenuItem item) {
         AdapterContextMenuInfo info = (AdapterContextMenuInfo) item.getMenuInfo();
         final AppObject app = (AppObject) appGridAdapter.getItem(info.position);
-        int itemId = item.getItemId();
+        return handleAppContextAction(item.getItemId(), app, info.targetView);
+    }
+
+    private boolean handleAppContextAction(int itemId, final AppObject app, View targetView) {
         switch (itemId) {
             case START_WITH_QUIT:
             case START_WITH_QUIT_VDISPLAY: {
@@ -580,8 +639,7 @@ public class AppView extends AppCompatActivity implements AdapterFragmentCallbac
             }
 
             case HIDE_APP_ID: {
-                if (item.isChecked()) {
-                    // Transitioning hidden to shown
+                if (app.isHidden) {
                     hiddenAppIds.remove(app.app.getAppId());
                 } else {
                     // Transitioning shown to hidden
@@ -592,7 +650,7 @@ public class AppView extends AppCompatActivity implements AdapterFragmentCallbac
             }
 
             case CREATE_SHORTCUT_ID: {
-                ImageView appImageView = info.targetView.findViewById(R.id.grid_image);
+                ImageView appImageView = targetView.findViewById(R.id.grid_image);
                 Bitmap appBits = ((BitmapDrawable) appImageView.getDrawable()).getBitmap();
                 if (!shortcutHelper.createPinnedGameShortcut(computer, app.app, appBits)) {
                     Toast.makeText(AppView.this, getResources().getString(R.string.unable_to_pin_shortcut), Toast.LENGTH_LONG).show();
@@ -618,7 +676,7 @@ public class AppView extends AppCompatActivity implements AdapterFragmentCallbac
             }
 
             default: {
-                return super.onContextItemSelected(item);
+                return false;
             }
         }
     }
@@ -656,6 +714,7 @@ public class AppView extends AppCompatActivity implements AdapterFragmentCallbac
 
                 if (updated) {
                     appGridAdapter.notifyDataSetChanged();
+                    updateAppGridColumns();
                 }
             }
         });
@@ -737,13 +796,18 @@ public class AppView extends AppCompatActivity implements AdapterFragmentCallbac
 
     @Override
     public int getAdapterFragmentLayoutId() {
-        return PreferenceConfiguration.readPreferences(AppView.this).smallIconMode ?
+        return PreferenceConfiguration.readPreferences(AppView.this).smallIconMode &&
+                getResources().getConfiguration().screenWidthDp < 600 ?
                     R.layout.app_grid_view_small : R.layout.app_grid_view;
     }
 
     @Override
     public void receiveAbsListView(AbsListView listView) {
         listView.setAdapter(appGridAdapter);
+        if (listView instanceof GridView) {
+            appGridView = (GridView) listView;
+            updateAppGridColumns();
+        }
         listView.setOnItemClickListener(new OnItemClickListener() {
             @Override
             public void onItemClick(AdapterView<?> arg0, View arg1, int pos,
@@ -755,7 +819,7 @@ public class AppView extends AppCompatActivity implements AdapterFragmentCallbac
                     if (prefConfig.resumeWithoutConfirm && lastRunningAppId == app.app.getAppId()) {
                         ServerHelper.doStart(AppView.this, app.app, computer, managerBinder, prefConfig.useVirtualDisplay);
                     } else {
-                        openContextMenu(arg1);
+                        showAppOptions(app, arg1);
                     }
                 } else {
                     if (prefConfig.useVirtualDisplay && !(computer.vDisplaySupported && computer.vDisplayDriverReady)) {
@@ -771,9 +835,32 @@ public class AppView extends AppCompatActivity implements AdapterFragmentCallbac
                 }
             }
         });
+        listView.setOnItemLongClickListener((parent, view, position, id) -> {
+            showAppOptions((AppObject) appGridAdapter.getItem(position), view);
+            return true;
+        });
         UiHelper.applyStatusBarPadding(listView);
-        registerForContextMenu(listView);
         listView.requestFocus();
+    }
+
+    private void updateAppGridColumns() {
+        if (appGridView == null || appGridAdapter == null) {
+            return;
+        }
+
+        appGridView.post(() -> {
+            int count = appGridAdapter.getCount();
+            if (count == 0 || appGridView.getWidth() == 0) {
+                return;
+            }
+
+            int cardWidthDp = prefConfig != null && prefConfig.smallIconMode &&
+                    getResources().getConfiguration().screenWidthDp < 600 ? 110 : 170;
+            int columnWidthPx = Math.max(1, Math.round(cardWidthDp * getResources().getDisplayMetrics().density));
+            int availableColumns = Math.max(1, appGridView.getWidth() / columnWidthPx);
+            appGridView.setNumColumns(Math.min(count, availableColumns));
+            appGridView.setStretchMode(GridView.STRETCH_SPACING_UNIFORM);
+        });
     }
 
     public static class AppObject {

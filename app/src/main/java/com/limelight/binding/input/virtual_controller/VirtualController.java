@@ -9,6 +9,7 @@ import android.app.AlertDialog;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
 import android.graphics.Color;
@@ -28,7 +29,6 @@ import com.limelight.LimeLog;
 import com.limelight.R;
 import com.limelight.Game;
 import com.limelight.binding.input.ControllerHandler;
-import com.limelight.preferences.PreferenceConfiguration;
 
 import java.util.ArrayList;
 import java.util.IdentityHashMap;
@@ -55,6 +55,8 @@ public class VirtualController {
     }
 
     private static final boolean _PRINT_DEBUG_INFORMATION = false;
+    private static final String CONTROLLER_SETTINGS_PREFS = "ControllerSettings";
+    private static final String HAPTIC_LEVEL_PREF = "haptic_feedback_level";
 
     private final ControllerHandler controllerHandler;
     private final Context context;
@@ -108,8 +110,8 @@ public class VirtualController {
     private ImageButton pcKeyboard;
 
     private Vibrator vibrator;
-
-    private final VibrationEffect defaultVibrationEffect;
+    private int hapticLevel;
+    private long lastHapticUptime;
 
     public VirtualController(final ControllerHandler controllerHandler, FrameLayout layout, final Context context) {
         this.controllerHandler = controllerHandler;
@@ -118,11 +120,8 @@ public class VirtualController {
         this.handler = new Handler(Looper.getMainLooper());
 
         this.vibrator = (Vibrator) context.getSystemService(Context.VIBRATOR_SERVICE);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            defaultVibrationEffect = VibrationEffect.createOneShot(10, VibrationEffect.DEFAULT_AMPLITUDE);
-        } else {
-            defaultVibrationEffect = null;
-        }
+        this.hapticLevel = context.getSharedPreferences(CONTROLLER_SETTINGS_PREFS, Context.MODE_PRIVATE)
+                .getInt(HAPTIC_LEVEL_PREF, 1);
 
         buttonConfigure = new Button(context);
         buttonConfigure.setAlpha(0.25f);
@@ -342,7 +341,8 @@ public class VirtualController {
                 context.getString(R.string.game_menu_controller_layout_standard) + (selected == 1 ? "  ✓" : ""),
                 context.getString(R.string.game_menu_controller_layout_advanced) + (selected == 2 ? "  ✓" : ""),
                 context.getString(R.string.controller_settings_button_style),
-                context.getString(R.string.controller_settings_customize)
+                context.getString(R.string.controller_settings_customize),
+                context.getString(R.string.controller_settings_haptics) + ": " + getHapticLevelLabel()
         };
         new AlertDialog.Builder(context)
                 .setTitle(R.string.controller_settings_title)
@@ -367,6 +367,8 @@ public class VirtualController {
                         } else {
                             Toast.makeText(context, R.string.controller_customize_gaming_only, Toast.LENGTH_SHORT).show();
                         }
+                    } else if (which == 7) {
+                        showHapticSettings();
                     }
                 })
                 .setNegativeButton(android.R.string.cancel, null)
@@ -438,6 +440,34 @@ public class VirtualController {
                 .show();
     }
 
+    private String getHapticLevelLabel() {
+        int[] labels = {R.string.controller_haptics_off, R.string.controller_haptics_subtle,
+                R.string.controller_haptics_medium, R.string.controller_haptics_strong};
+        return context.getString(labels[Math.max(0, Math.min(hapticLevel, labels.length - 1))]);
+    }
+
+    private void showHapticSettings() {
+        int[] labels = {R.string.controller_haptics_off, R.string.controller_haptics_subtle,
+                R.string.controller_haptics_medium, R.string.controller_haptics_strong};
+        CharSequence[] choices = new CharSequence[labels.length];
+        for (int i = 0; i < labels.length; i++) {
+            choices[i] = context.getString(labels[i]);
+        }
+        new AlertDialog.Builder(context)
+                .setTitle(R.string.controller_settings_haptics)
+                .setSingleChoiceItems(choices, hapticLevel, (dialog, which) -> {
+                    if (which >= 0 && which < choices.length) {
+                        hapticLevel = which;
+                        context.getSharedPreferences(CONTROLLER_SETTINGS_PREFS, Context.MODE_PRIVATE)
+                                .edit().putInt(HAPTIC_LEVEL_PREF, hapticLevel).apply();
+                        dialog.dismiss();
+                        showControllerSettings();
+                    }
+                })
+                .setNegativeButton(android.R.string.cancel, null)
+                .show();
+    }
+
     private void beginConfigurationMode() {
         String message;
         if (currentMode == ControllerMode.Active) {
@@ -468,6 +498,12 @@ public class VirtualController {
             profile = "advanced";
         }
         layoutProfile = profile;
+        if (foldSplitTop >= 0) {
+            applyComfortableFoldLayout();
+            if ("nintendo".equals(buttonStyle)) {
+                applyFoldFaceButtonArrangement();
+            }
+        }
         showEnabledElements();
     }
 
@@ -531,9 +567,9 @@ public class VirtualController {
         int width = frame_layout.getWidth();
         int panelHeight = foldSplitRootHeight - foldSplitTop;
         if (width <= 0 || panelHeight <= 0) return;
-        float centerX = width * 0.88f;
+        float centerX = width * ("basic".equals(layoutProfile) ? 0.80f : 0.88f);
         float centerY = panelHeight * 0.39f;
-        int face = Math.round(panelHeight * 0.095f);
+        int face = Math.round(panelHeight * ("basic".equals(layoutProfile) ? 0.17f : 0.095f));
         float offset = face * 1.05f;
         if ("nintendo".equals(buttonStyle)) {
             setCenteredBounds(VirtualControllerElement.EID_X, centerX, centerY - offset, face, face);
@@ -669,9 +705,36 @@ public class VirtualController {
         applyFoldSplitTransform(buttonConfigure, scale);
         applyComfortableFoldLayout();
         VirtualControllerConfigurationLoader.loadFoldSplitProfile(this, context);
+        if (!foldSplitElementsFit()) {
+            // Saved Fold layouts can outlive a device/window size change. Keep the user's
+            // saved coordinates intact, but don't let stale off-screen positions hide the
+            // controls: use the fitted Fold arrangement for this session instead.
+            LimeLog.info("Saved Fold controller layout does not fit the current screen; using fitted layout");
+            applyComfortableFoldLayout();
+        }
         if ("nintendo".equals(buttonStyle)) {
             applyFoldFaceButtonArrangement();
         }
+    }
+
+    private boolean foldSplitElementsFit() {
+        int width = frame_layout.getWidth();
+        if (width <= 0 || foldSplitTop < 0 || foldSplitRootHeight <= foldSplitTop) {
+            return false;
+        }
+
+        for (VirtualControllerElement element : elements) {
+            if (!(element.getLayoutParams() instanceof FrameLayout.LayoutParams)) {
+                continue;
+            }
+            FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) element.getLayoutParams();
+            if (params.leftMargin < 0 || params.topMargin < foldSplitTop ||
+                    params.leftMargin + params.width > width ||
+                    params.topMargin + params.height > foldSplitRootHeight) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private void applyComfortableFoldLayout() {
@@ -684,8 +747,9 @@ public class VirtualController {
         float w = width;
         float h = panelHeight;
         int stick = Math.round(h * 0.22f);
-        int dpad = Math.round(h * 0.25f);
-        int face = Math.round(h * 0.095f);
+        boolean basicProfile = "basic".equals(layoutProfile);
+        int dpad = Math.round(h * (basicProfile ? 0.32f : 0.25f));
+        int face = Math.round(h * (basicProfile ? 0.17f : 0.095f));
         int shoulderWidth = Math.round(w * 0.145f);
         int shoulderHeight = Math.round(h * 0.095f);
         int menuWidth = Math.round(w * 0.07f);
@@ -695,7 +759,7 @@ public class VirtualController {
         setCenteredBounds(VirtualControllerElement.EID_DPAD, w * 0.105f, h * 0.64f, dpad, dpad);
         setCenteredBounds(VirtualControllerElement.EID_RS, w * 0.70f, h * 0.64f, stick, stick);
 
-        float faceCenterX = w * 0.88f;
+        float faceCenterX = w * (basicProfile ? 0.80f : 0.88f);
         float faceCenterY = h * 0.39f;
         float faceOffset = face * 1.05f;
         setCenteredBounds(VirtualControllerElement.EID_Y, faceCenterX, faceCenterY - faceOffset, face, face);
@@ -807,22 +871,9 @@ public class VirtualController {
         handler.removeCallbacks(delayedRetransmitRunnable);
 
         sendControllerInputContextInternal();
-        if (frame_layout != null && PreferenceConfiguration.readPreferences(context).enableKeyboardVibrate) {
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                VibrationEffect effect;
-                if (vibrationDuration == 0) {
-                    effect = defaultVibrationEffect;
-                } else {
-                    effect = VibrationEffect.createOneShot(vibrationDuration, vibrationAmplitude);
-                }
-                vibrator.vibrate(effect);
-            } else {
-                if (vibrationDuration == 0) {
-                    vibrationDuration = 10;
-                }
-                vibrator.vibrate(vibrationDuration);
-            }
-        }
+        // Input packets are sent while controls move or change state. Haptics are instead
+        // fired only by DigitalButton's press transition (performControllerHaptic()).
+        // This prevents a held/moving control from producing repeated vibration.
         // HACK: GFE sometimes discards gamepad packets when they are received
         // very shortly after another. This can be critical if an axis zeroing packet
         // is lost and causes an analog stick to get stuck. To avoid this, we retransmit
@@ -830,6 +881,21 @@ public class VirtualController {
         handler.postDelayed(delayedRetransmitRunnable, 25);
         handler.postDelayed(delayedRetransmitRunnable, 50);
         handler.postDelayed(delayedRetransmitRunnable, 75);
+    }
+
+    public void performControllerHaptic() {
+        long now = SystemClock.uptimeMillis();
+        if (frame_layout != null && hapticLevel > 0 && vibrator != null && vibrator.hasVibrator() &&
+                now - lastHapticUptime >= 35) {
+            lastHapticUptime = now;
+            long feedbackDuration = hapticLevel == 1 ? 8 : (hapticLevel == 2 ? 11 : 15);
+            int feedbackAmplitude = hapticLevel == 1 ? 28 : (hapticLevel == 2 ? 58 : 96);
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                vibrator.vibrate(VibrationEffect.createOneShot(feedbackDuration, feedbackAmplitude));
+            } else {
+                vibrator.vibrate(feedbackDuration);
+            }
+        }
     }
 
     public void sendControllerInputContext() {

@@ -243,6 +243,7 @@ public class DigitalButton extends VirtualControllerElement {
 
     private void onClickCallback() {
         _DBG("clicked");
+        virtualController.performControllerHaptic();
         // notify listeners
         for (DigitalButtonListener listener : listeners) {
             listener.onClick();

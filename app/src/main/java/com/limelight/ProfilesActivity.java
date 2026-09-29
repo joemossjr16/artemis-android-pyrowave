@@ -14,6 +14,7 @@ import com.google.android.material.floatingactionbutton.FloatingActionButton;
 import com.limelight.profiles.ProfilesAdapter;
 import com.limelight.profiles.ProfilesManager;
 import com.limelight.utils.UiHelper;
+import com.limelight.utils.M3Motion;
 
 public class ProfilesActivity extends AppCompatActivity implements ProfilesManager.ProfileChangeListener {
     private ProfilesAdapter adapter;
@@ -24,6 +25,7 @@ public class ProfilesActivity extends AppCompatActivity implements ProfilesManag
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_profiles);
+        M3Motion.enter(findViewById(android.R.id.content), 0);
 
         // Setup RecyclerView
         recyclerView = findViewById(R.id.profilesRecyclerView);

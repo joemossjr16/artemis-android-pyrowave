@@ -4,7 +4,10 @@
     android:layout_height="wrap_content"
     android:orientation="horizontal"
     android:padding="16dp"
-    android:background="?android:attr/selectableItemBackground"
+    android:layout_marginTop="5dp"
+    android:layout_marginBottom="5dp"
+    android:background="@drawable/m3_profile_card_background"
+    android:foreground="?attr/selectableItemBackground"
     android:gravity="center_vertical">
 
     <LinearLayout
@@ -17,7 +20,7 @@
             android:id="@+id/profileName"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:textColor="#FFFFFF"
+            android:textColor="@color/m3OnSurface"
             android:textSize="16sp"
             android:textStyle="bold"
             android:singleLine="true"
@@ -28,7 +31,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
-            android:textColor="#CCCCCC"
+            android:textColor="@color/m3OnSurfaceVariant"
             android:textSize="12sp" />
 
     </LinearLayout>
@@ -48,7 +51,8 @@
         android:layout_height="48dp"
         android:background="?android:attr/selectableItemBackgroundBorderless"
         android:contentDescription="Edit profile"
-        android:src="@drawable/ic_edit" />
+        android:src="@drawable/ic_edit"
+        android:tint="@color/m3OnSurfaceVariant" />
 
     <ImageButton
         android:id="@+id/deleteProfile"
@@ -56,6 +60,7 @@
         android:layout_height="48dp"
         android:background="?android:attr/selectableItemBackgroundBorderless"
         android:contentDescription="Delete profile"
-        android:src="@drawable/ic_delete" />
+        android:src="@drawable/ic_delete"
+        android:tint="@color/m3OnSurfaceVariant" />
 
 </LinearLayout>

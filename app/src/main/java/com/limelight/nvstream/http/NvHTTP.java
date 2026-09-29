@@ -6,6 +6,7 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.Reader;
 import java.io.StringReader;
+import android.os.SystemClock;
 import java.net.Inet4Address;
 import java.net.InetAddress;
 import java.net.Proxy;
@@ -782,6 +783,32 @@ public class NvHTTP {
     
     public String getAppListRaw() throws IOException {
         return openHttpConnectionToString(httpClientLongConnectTimeout, getHttpsUrl(true), "applist");
+    }
+
+    /** Download the host's bounded, authenticated test payload and return measured Mbps. */
+    public double measureConnectionBandwidthMbps() throws IOException {
+        final long expectedBytes = 16L * 1024 * 1024;
+        OkHttpClient speedTestClient = httpClientLongConnectTimeout.newBuilder()
+                .readTimeout(180, TimeUnit.SECONDS)
+                .build();
+        try (ResponseBody response = openHttpConnection(speedTestClient, getHttpsUrl(true), "speedtest", null, null)) {
+            if (response.contentLength() != expectedBytes) {
+                throw new IOException("The host returned an unsupported speed-test payload size");
+            }
+
+            long receivedBytes = 0;
+            byte[] buffer = new byte[64 * 1024];
+            long startedAt = SystemClock.elapsedRealtimeNanos();
+            int count;
+            while ((count = response.byteStream().read(buffer)) != -1) {
+                receivedBytes += count;
+            }
+            long elapsedNanos = SystemClock.elapsedRealtimeNanos() - startedAt;
+            if (receivedBytes != expectedBytes || elapsedNanos <= 0) {
+                throw new IOException("The host speed-test transfer was incomplete");
+            }
+            return receivedBytes * 8.0 / (elapsedNanos / 1_000_000_000.0) / 1_000_000.0;
+        }
     }
     
     public LinkedList<NvApp> getAppList() throws HostHttpResponseException, IOException, XmlPullParserException {

@@ -6,7 +6,7 @@
         by AppBaseTheme from res/values-vXX/styles.xml on newer devices.
 
     -->
-    <style name="AppBaseTheme" parent="Theme.MaterialComponents.NoActionBar">
+    <style name="AppBaseTheme" parent="Theme.Material3.Dark.NoActionBar">
         <!--
             Theme customizations available in newer API levels can go in
             res/values-vXX/styles.xml, while customizations related to
@@ -17,12 +17,25 @@
     <!-- Application theme. -->
     <style name="AppTheme" parent="AppBaseTheme">
         <!-- All customizations that are NOT specific to a particular API-level can go here. -->
+        <item name="colorPrimary">@color/m3Primary</item>
+        <item name="colorOnPrimary">@color/m3OnPrimary</item>
+        <item name="colorPrimaryContainer">@color/m3PrimaryContainer</item>
+        <item name="colorOnPrimaryContainer">@color/m3OnPrimaryContainer</item>
+        <item name="colorSecondary">@color/m3Secondary</item>
+        <item name="colorSurface">@color/m3Surface</item>
+        <item name="colorOnSurface">@color/m3OnSurface</item>
+        <item name="colorSurfaceVariant">@color/m3SurfaceHigh</item>
+        <item name="colorOnSurfaceVariant">@color/m3OnSurfaceVariant</item>
+        <item name="colorOutline">@color/m3Outline</item>
+        <item name="colorTertiaryContainer">@color/m3TertiaryContainer</item>
+        <item name="colorOnTertiaryContainer">@color/m3OnTertiaryContainer</item>
         <item name="android:windowActionBar">false</item>
         <item name="android:windowNoTitle">true</item>
-        <item name="android:statusBarColor">#1A1A1A</item>
-        <item name="android:navigationBarColor">#1A1A1A</item>
-        <item name="android:colorBackground">#1A1A1A</item>
-        <item name="android:windowBackground">#1A1A1A</item>
+        <item name="android:statusBarColor">@color/m3Background</item>
+        <item name="android:navigationBarColor">@color/m3Background</item>
+        <item name="android:colorBackground">@color/m3Background</item>
+        <item name="android:windowBackground">@color/m3Background</item>
+        <item name="android:windowAnimationStyle">@style/M3ActivityAnimation</item>
     </style>
 
     <!-- AMOLED theme: pure black surfaces with a distinct accent, opt-in via settings -->
@@ -31,6 +44,8 @@
         <item name="android:navigationBarColor">@android:color/black</item>
         <item name="android:colorBackground">@android:color/black</item>
         <item name="android:windowBackground">@android:color/black</item>
+        <item name="colorSurface">@android:color/black</item>
+        <item name="colorSurfaceVariant">#141414</item>
         <item name="colorAccent">@color/amoledAccent</item>
         <item name="android:colorAccent">@color/amoledAccent</item>
     </style>
@@ -43,6 +58,17 @@
     <!-- Stream activity theme -->
     <style name="StreamTheme" parent="StreamBaseTheme">
         <!-- All customizations that are NOT specific to a particular API-level can go here. -->
+        <!-- Keep streaming dialogs on the same Material 3 palette as the main client. -->
+        <item name="colorPrimary">@color/m3Primary</item>
+        <item name="colorOnPrimary">@color/m3OnPrimary</item>
+        <item name="colorPrimaryContainer">@color/m3PrimaryContainer</item>
+        <item name="colorOnPrimaryContainer">@color/m3OnPrimaryContainer</item>
+        <item name="colorSecondary">@color/m3Secondary</item>
+        <item name="colorSurface">@color/m3Surface</item>
+        <item name="colorOnSurface">@color/m3OnSurface</item>
+        <item name="colorSurfaceVariant">@color/m3SurfaceHigh</item>
+        <item name="colorOnSurfaceVariant">@color/m3OnSurfaceVariant</item>
+        <item name="colorOutline">@color/m3Outline</item>
         <item name="android:windowActionBar">false</item>
         <item name="android:windowNoTitle">true</item>
         <!-- Added for API 34+ where ImageButton requires these color attrs to inflate -->
@@ -59,11 +85,79 @@
         <item name="colorButtonNormal">@android:color/white</item>
     </style>
 
-    <style name="SettingsTheme" parent="Theme.AppCompat.NoActionBar">
-        <item name="android:statusBarColor">@android:color/transparent</item>
-        <item name="android:navigationBarColor">@android:color/transparent</item>
-        <item name="android:colorBackground">@android:color/transparent</item>
-        <item name="android:windowBackground">@android:color/transparent</item>
+    <style name="SettingsTheme" parent="Theme.Material3.Dark.NoActionBar">
+        <item name="preferenceTheme">@style/M3PreferenceThemeOverlay</item>
+        <item name="colorPrimary">@color/m3Primary</item>
+        <item name="colorOnPrimary">@color/m3OnPrimary</item>
+        <item name="colorPrimaryContainer">@color/m3PrimaryContainer</item>
+        <item name="colorOnPrimaryContainer">@color/m3OnPrimaryContainer</item>
+        <item name="colorSecondary">@color/m3Secondary</item>
+        <item name="colorSurface">@color/m3Surface</item>
+        <item name="colorOnSurface">@color/m3OnSurface</item>
+        <item name="colorSurfaceVariant">@color/m3SurfaceHigh</item>
+        <item name="colorOnSurfaceVariant">@color/m3OnSurfaceVariant</item>
+        <item name="colorOutline">@color/m3Outline</item>
+        <item name="android:statusBarColor">@color/m3Background</item>
+        <item name="android:navigationBarColor">@color/m3Background</item>
+        <item name="android:colorBackground">@color/m3Background</item>
+        <item name="android:windowBackground">@color/m3Background</item>
+        <item name="android:windowAnimationStyle">@style/M3ActivityAnimation</item>
+    </style>
+
+    <style name="M3PreferenceThemeOverlay" parent="PreferenceThemeOverlay.v14.Material">
+        <item name="preferenceStyle">@style/M3Preference</item>
+        <item name="preferenceCategoryStyle">@style/M3PreferenceCategory</item>
+        <item name="preferenceFragmentCompatStyle">@style/M3PreferenceFragment</item>
+        <item name="checkBoxPreferenceStyle">@style/M3CheckBoxPreference</item>
+        <item name="switchPreferenceStyle">@style/M3SwitchPreference</item>
+        <item name="switchPreferenceCompatStyle">@style/M3SwitchPreferenceCompat</item>
+    </style>
+
+    <style name="M3PreferenceFragment" parent="PreferenceFragment.Material">
+        <item name="android:divider">@null</item>
+        <item name="allowDividerAfterLastItem">false</item>
+    </style>
+
+    <style name="M3Preference" parent="Preference.Material">
+        <item name="android:layout">@layout/m3_preference</item>
+        <item name="allowDividerAbove">false</item>
+        <item name="allowDividerBelow">false</item>
+        <item name="iconSpaceReserved">false</item>
+    </style>
+
+    <style name="M3PreferenceCategory" parent="Preference.Category.Material">
+        <item name="android:layout">@layout/m3_preference_category</item>
+        <item name="allowDividerAbove">false</item>
+        <item name="allowDividerBelow">false</item>
+        <item name="iconSpaceReserved">false</item>
+    </style>
+
+    <style name="M3CheckBoxPreference" parent="Preference.CheckBoxPreference.Material">
+        <item name="android:layout">@layout/m3_preference</item>
+        <item name="allowDividerAbove">false</item>
+        <item name="allowDividerBelow">false</item>
+        <item name="iconSpaceReserved">false</item>
+    </style>
+
+    <style name="M3SwitchPreference" parent="Preference.SwitchPreference.Material">
+        <item name="android:layout">@layout/m3_preference</item>
+        <item name="allowDividerAbove">false</item>
+        <item name="allowDividerBelow">false</item>
+        <item name="iconSpaceReserved">false</item>
+    </style>
+
+    <style name="M3SwitchPreferenceCompat" parent="Preference.SwitchPreferenceCompat.Material">
+        <item name="android:layout">@layout/m3_preference</item>
+        <item name="allowDividerAbove">false</item>
+        <item name="allowDividerBelow">false</item>
+        <item name="iconSpaceReserved">false</item>
+    </style>
+
+    <style name="M3ActivityAnimation">
+        <item name="android:activityOpenEnterAnimation">@anim/m3_activity_open_enter</item>
+        <item name="android:activityOpenExitAnimation">@anim/m3_activity_open_exit</item>
+        <item name="android:activityCloseEnterAnimation">@anim/m3_activity_close_enter</item>
+        <item name="android:activityCloseExitAnimation">@anim/m3_activity_close_exit</item>
     </style>
 
     <style name="ExternalDisplayControllerTheme" parent="AppTheme">

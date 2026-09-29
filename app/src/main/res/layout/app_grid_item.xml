@@ -1,47 +1,59 @@
 <?xml version="1.0" encoding="utf-8"?>
-<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="170dp"
-    android:layout_height="220dp">
+    android:layout_height="205dp"
+    android:layout_margin="6dp"
+    android:clickable="false"
+    android:focusable="false"
+    android:foreground="?attr/selectableItemBackground"
+    app:cardBackgroundColor="@color/m3SurfaceContainer"
+    app:cardCornerRadius="26dp"
+    app:cardElevation="0dp"
+    app:strokeColor="@color/m3SurfaceHigh"
+    app:strokeWidth="1dp">
 
-    <androidx.cardview.widget.CardView
+    <ImageView
+        android:id="@+id/grid_image"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:layout_margin="10dp"
-        app:cardCornerRadius="12dp"
-        app:cardElevation="8dp"
-        app:cardMaxElevation="8dp">
+        android:scaleType="centerCrop" />
+
+    <RelativeLayout
+        android:id="@+id/grid_mask"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@drawable/m3_image_scrim"
+        android:padding="16dp">
 
         <ImageView
-            android:id="@+id/grid_image"
+            android:id="@+id/grid_overlay"
+            android:layout_width="46dp"
+            android:layout_height="46dp"
+            android:layout_alignParentStart="true"
+            android:layout_alignParentTop="true"
+            android:background="@drawable/m3_icon_button_background"
+            android:padding="11dp" />
+
+        <ProgressBar
+            android:id="@+id/grid_spinner"
+            android:layout_width="46dp"
+            android:layout_height="46dp"
+            android:layout_alignParentStart="true"
+            android:layout_alignParentTop="true"
+            android:indeterminate="true"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/grid_text"
             android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:cropToPadding="false"
-            android:scaleType="centerCrop" />
-
-        <RelativeLayout
-            android:id="@+id/grid_mask"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent">
-
-            <ImageView
-                android:id="@+id/grid_overlay"
-                android:layout_width="50dp"
-                android:layout_height="50dp"
-                android:layout_centerHorizontal="true"
-                android:layout_marginTop="50dp" />
-
-            <TextView
-                android:id="@+id/grid_text"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:layout_below="@id/grid_overlay"
-                android:layout_margin="5dp"
-                android:gravity="center|center_vertical"
-                android:background="#00FFFFFF"
-                android:textAlignment="center"
-                android:textSize="18sp" />
-        </RelativeLayout>
-
-    </androidx.cardview.widget.CardView>
-</RelativeLayout>
+            android:layout_height="wrap_content"
+            android:layout_alignParentBottom="true"
+            android:ellipsize="end"
+            android:gravity="start|center_vertical"
+            android:maxLines="2"
+            android:textColor="@color/m3OnSurface"
+            android:textSize="17sp"
+            android:textStyle="bold" />
+    </RelativeLayout>
+</com.google.android.material.card.MaterialCardView>

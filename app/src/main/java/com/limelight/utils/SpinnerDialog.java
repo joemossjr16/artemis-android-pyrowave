@@ -4,15 +4,26 @@ import java.util.ArrayList;
 import java.util.Iterator;
 
 import android.app.Activity;
-import android.app.ProgressDialog;
 import android.content.DialogInterface;
 import android.content.DialogInterface.OnCancelListener;
+import android.graphics.Color;
+import android.util.TypedValue;
+import android.view.Gravity;
+import android.view.ViewGroup;
+import android.widget.LinearLayout;
+import android.widget.TextView;
+
+import androidx.appcompat.app.AlertDialog;
+
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
+import com.google.android.material.progressindicator.CircularProgressIndicator;
 
 public class SpinnerDialog implements Runnable,OnCancelListener {
     private final String title;
-    private final String message;
+    private String message;
     private final Activity activity;
-    private ProgressDialog progress;
+    private AlertDialog progress;
+    private TextView messageView;
     private final boolean finish;
 
     private static final ArrayList<SpinnerDialog> rundownDialogs = new ArrayList<>();
@@ -41,9 +52,11 @@ public class SpinnerDialog implements Runnable,OnCancelListener {
                 SpinnerDialog dialog = i.next();
                 if (dialog.activity == activity) {
                     i.remove();
-                    if (dialog.progress.isShowing()) {
+                    if (dialog.progress != null && dialog.progress.isShowing()) {
                         dialog.progress.dismiss();
                     }
+                    dialog.progress = null;
+                    dialog.messageView = null;
                 }
             }
         }
@@ -51,16 +64,24 @@ public class SpinnerDialog implements Runnable,OnCancelListener {
 
     public void dismiss()
     {
-        // Running again with progress != null will destroy it
-        activity.runOnUiThread(this);
+        activity.runOnUiThread(() -> {
+            synchronized (rundownDialogs) {
+                rundownDialogs.remove(this);
+            }
+            if (progress != null && progress.isShowing()) {
+                progress.dismiss();
+            }
+            progress = null;
+            messageView = null;
+        });
     }
 
     public void setMessage(final String message)
     {
-        activity.runOnUiThread(new Runnable() {
-            @Override
-            public void run() {
-                progress.setMessage(message);
+        activity.runOnUiThread(() -> {
+            this.message = message;
+            if (messageView != null) {
+                messageView.setText(message);
             }
         });
     }
@@ -75,23 +96,43 @@ public class SpinnerDialog implements Runnable,OnCancelListener {
 
         if (progress == null)
         {
-            progress = new ProgressDialog(activity);
+            int horizontalPadding = dp(24);
+            int verticalPadding = dp(8);
 
-            progress.setTitle(title);
-            progress.setMessage(message);
-            progress.setProgressStyle(ProgressDialog.STYLE_SPINNER);
-            progress.setOnCancelListener(this);
+            LinearLayout content = new LinearLayout(activity);
+            content.setOrientation(LinearLayout.HORIZONTAL);
+            content.setGravity(Gravity.CENTER_VERTICAL);
+            content.setPadding(horizontalPadding, verticalPadding, horizontalPadding, verticalPadding);
 
-            // If we want to finish the activity when this is killed, make it cancellable
-            if (finish)
-            {
-                progress.setCancelable(true);
-                progress.setCanceledOnTouchOutside(false);
+            CircularProgressIndicator indicator = new CircularProgressIndicator(activity);
+            indicator.setIndeterminate(true);
+            TypedValue primary = new TypedValue();
+            if (activity.getTheme().resolveAttribute(androidx.appcompat.R.attr.colorPrimary, primary, true)) {
+                indicator.setIndicatorColor(primary.data);
             }
-            else
-            {
-                progress.setCancelable(false);
+            content.addView(indicator, new LinearLayout.LayoutParams(dp(40), dp(40)));
+
+            messageView = new TextView(activity);
+            messageView.setText(message);
+            messageView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+            messageView.setGravity(Gravity.CENTER_VERTICAL);
+            TypedValue onSurface = new TypedValue();
+            if (activity.getTheme().resolveAttribute(com.google.android.material.R.attr.colorOnSurface, onSurface, true)) {
+                messageView.setTextColor(onSurface.data);
+            } else {
+                messageView.setTextColor(Color.WHITE);
             }
+            LinearLayout.LayoutParams messageParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+            messageParams.leftMargin = dp(20);
+            content.addView(messageView, messageParams);
+
+            progress = new MaterialAlertDialogBuilder(activity)
+                    .setTitle(title)
+                    .setView(content)
+                    .setOnCancelListener(this)
+                    .create();
+            progress.setCancelable(finish);
+            progress.setCanceledOnTouchOutside(false);
 
             synchronized (rundownDialogs) {
                 rundownDialogs.add(this);
@@ -115,6 +156,12 @@ public class SpinnerDialog implements Runnable,OnCancelListener {
         }
 
         // This will only be called if finish was true, so we don't need to check again
-        activity.finish();
+        if (finish) {
+            activity.finish();
+        }
+    }
+
+    private int dp(int value) {
+        return Math.round(value * activity.getResources().getDisplayMetrics().density);
     }
 }

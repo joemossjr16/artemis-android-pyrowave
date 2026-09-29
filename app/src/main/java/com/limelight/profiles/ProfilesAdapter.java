@@ -17,6 +17,7 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import com.limelight.EditProfileActivity;
 import com.limelight.R;
+import com.limelight.utils.M3Motion;
 
 import java.util.List;
 import java.util.UUID;
@@ -39,6 +40,8 @@ public class ProfilesAdapter extends RecyclerView.Adapter<ProfilesAdapter.Profil
 
     @Override
     public void onBindViewHolder(@NonNull ProfileViewHolder holder, int position) {
+        M3Motion.enter(holder.itemView, position);
+        M3Motion.attachPressFeedback(holder.itemView);
         List<SettingsProfile> profiles = profilesManager.getProfiles();
         SettingsProfile profile = profiles.get(position);
         SettingsProfile activeProfile = profilesManager.getActive();

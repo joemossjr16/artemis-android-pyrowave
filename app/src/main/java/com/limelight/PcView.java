@@ -5,10 +5,12 @@ import java.io.IOException;
 import java.net.UnknownHostException;
 
 import com.google.android.material.floatingactionbutton.ExtendedFloatingActionButton;
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.limelight.binding.PlatformBinding;
 import com.limelight.binding.crypto.AndroidCryptoProvider;
 import com.limelight.computers.ComputerManagerListener;
 import com.limelight.computers.ComputerManagerService;
+import com.limelight.computers.PairedComputerBackup;
 import com.limelight.grid.PcGridAdapter;
 import com.limelight.grid.assets.DiskAssetLoader;
 import com.limelight.nvstream.http.ComputerDetails;
@@ -21,16 +23,20 @@ import com.limelight.preferences.AddComputerManually;
 import com.limelight.preferences.GlPreferences;
 import com.limelight.preferences.PreferenceConfiguration;
 import com.limelight.preferences.StreamSettings;
+import com.limelight.preferences.StreamSettingsHost;
 import com.limelight.profiles.ProfilesManager;
 import com.limelight.ui.AdapterFragment;
 import com.limelight.ui.AdapterFragmentCallbacks;
 import com.limelight.utils.Dialog;
 import com.limelight.utils.HelpLauncher;
+import com.limelight.utils.M3Motion;
 import com.limelight.utils.ServerHelper;
+import com.limelight.utils.SpinnerDialog;
 import com.limelight.utils.ShortcutHelper;
 import com.limelight.utils.UiHelper;
 
 import android.app.ActivityManager;
+import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.Service;
 import android.content.ComponentName;
@@ -47,18 +53,22 @@ import android.provider.Settings;
 import android.text.InputFilter;
 import android.text.InputType;
 import android.view.ContextMenu;
+import android.view.Gravity;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.ContextMenu.ContextMenuInfo;
 import android.view.View.OnClickListener;
 import android.widget.AbsListView;
 import android.widget.AdapterView;
 import android.widget.AdapterView.OnItemClickListener;
 import android.widget.EditText;
+import android.widget.FrameLayout;
 import android.widget.ImageButton;
 import android.widget.LinearLayout;
 import android.widget.RelativeLayout;
+import android.widget.TextView;
 import android.widget.Toast;
 import android.widget.AdapterView.AdapterContextMenuInfo;
 
@@ -69,15 +79,24 @@ import org.xmlpull.v1.XmlPullParserException;
 
 import javax.microedition.khronos.egl.EGLConfig;
 import javax.microedition.khronos.opengles.GL10;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.util.ArrayList;
+import java.util.List;
 
-public class PcView extends AppCompatActivity implements AdapterFragmentCallbacks {
+public class PcView extends AppCompatActivity implements AdapterFragmentCallbacks, StreamSettingsHost {
     private RelativeLayout noPcFoundLayout;
     private PcGridAdapter pcGridAdapter;
+    private FrameLayout foldSettingsContainer;
+    private View foldSettingsScrim;
     private ShortcutHelper shortcutHelper;
     private ComputerManagerService.ComputerManagerBinder managerBinder;
     private boolean freezeUpdates, runningPolling, inForeground, completeOnCreateCalled;
     private ComputerDetails.AddressTuple pendingPairingAddress;
     private String pendingPairingPin, pendingPairingPassphrase;
+    private String pendingBackupPassphrase;
+    private String pendingBackupComputerUuid;
+    private String pendingRestoreComputerUuid;
     private final ServiceConnection serviceConnection = new ServiceConnection() {
         public void onServiceConnected(ComponentName className, IBinder binder) {
             final ComputerManagerService.ComputerManagerBinder localBinder =
@@ -136,9 +155,18 @@ public class PcView extends AppCompatActivity implements AdapterFragmentCallback
     private final static int GAMESTREAM_EOL_ID = 11;
     private final static int OPEN_MANAGEMENT_PAGE_ID = 20;
     private final static int PAIR_ID_OTP = 21;
+    private final static int BACKUP_PAIRING_ID = 22;
+    private final static int RESTORE_PAIRING_ID = 23;
+    private final static int SPEED_TEST_ID = 24;
+    private static final int CREATE_PC_BACKUP_REQUEST = 1201;
+    private static final int RESTORE_PC_BACKUP_REQUEST = 1202;
 
     private void initializeViews() {
+        if (foldSettingsContainer != null) {
+            closeFoldSettingsPane();
+        }
         setContentView(R.layout.activity_pc_view);
+        M3Motion.enter(findViewById(android.R.id.content), 0);
 
         UiHelper.notifyNewRootView(this);
 
@@ -154,15 +182,19 @@ public class PcView extends AppCompatActivity implements AdapterFragmentCallback
         pcGridAdapter.updateLayoutWithPreferences(this, PreferenceConfiguration.readPreferences(this));
 
         // Setup the list view
-        ImageButton settingsButton = findViewById(R.id.settingsButton);
+        View settingsButton = findViewById(R.id.settingsButton);
         ImageButton addComputerButton = findViewById(R.id.manuallyAddPc);
-        ImageButton helpButton = findViewById(R.id.helpButton);
+        View helpButton = findViewById(R.id.helpButton);
         ExtendedFloatingActionButton profilesButton = findViewById(R.id.profilesButton);
 
         settingsButton.setOnClickListener(new OnClickListener() {
             @Override
             public void onClick(View v) {
-                startActivity(new Intent(PcView.this, StreamSettings.class));
+                if (getResources().getConfiguration().screenWidthDp >= 600) {
+                    showFoldSettingsPane();
+                } else {
+                    startActivity(new Intent(PcView.this, StreamSettings.class));
+                }
             }
         });
         addComputerButton.setOnClickListener(new OnClickListener() {
@@ -204,6 +236,102 @@ public class PcView extends AppCompatActivity implements AdapterFragmentCallback
             noPcFoundLayout.setVisibility(View.INVISIBLE);
         }
         pcGridAdapter.notifyDataSetChanged();
+    }
+
+    private void showFoldSettingsPane() {
+        if (foldSettingsContainer != null) {
+            return;
+        }
+
+        float density = getResources().getDisplayMetrics().density;
+        int panelWidth = Math.min(Math.round(460 * density), getResources().getDisplayMetrics().widthPixels);
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        boolean amoled = PreferenceConfiguration.readPreferences(this).amoledTheme;
+        android.graphics.drawable.GradientDrawable panelBackground = new android.graphics.drawable.GradientDrawable();
+        panelBackground.setColor(androidx.core.content.ContextCompat.getColor(this,
+                amoled ? android.R.color.black : R.color.m3SurfaceContainer));
+        float corner = 28 * density;
+        panelBackground.setCornerRadii(new float[]{corner, corner, 0, 0, 0, 0, corner, corner});
+        panel.setBackground(panelBackground);
+        panel.setElevation(20 * density);
+
+        LinearLayout header = new LinearLayout(this);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+        header.setPadding(Math.round(20 * density), 0, Math.round(20 * density), 0);
+        ImageButton close = new ImageButton(this);
+        close.setImageResource(R.drawable.ic_back);
+        close.setBackgroundColor(android.graphics.Color.TRANSPARENT);
+        close.setColorFilter(androidx.core.content.ContextCompat.getColor(this, R.color.m3OnSurface));
+        close.setContentDescription(getString(R.string.m3_back));
+        header.addView(close, new LinearLayout.LayoutParams(Math.round(48 * density), Math.round(56 * density)));
+        TextView title = new TextView(this);
+        title.setText(R.string.m3_streaming_settings);
+        title.setTextSize(20);
+        title.setTypeface(null, android.graphics.Typeface.BOLD);
+        title.setTextColor(androidx.core.content.ContextCompat.getColor(this, R.color.m3OnSurface));
+        LinearLayout.LayoutParams titleParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
+        titleParams.leftMargin = Math.round(12 * density);
+        header.addView(title, titleParams);
+        panel.addView(header, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Math.round(64 * density)));
+
+        foldSettingsContainer = new FrameLayout(this);
+        foldSettingsContainer.setId(View.generateViewId());
+        panel.addView(foldSettingsContainer, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
+
+        FrameLayout root = findViewById(android.R.id.content);
+        foldSettingsScrim = new View(this);
+        foldSettingsScrim.setBackgroundColor(android.graphics.Color.BLACK);
+        foldSettingsScrim.setAlpha(0.42f);
+        root.addView(foldSettingsScrim, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        foldSettingsScrim.setOnClickListener(v -> closeFoldSettingsPane());
+        panel.setAlpha(0f);
+        panel.setTranslationX(24 * density);
+        root.addView(panel, new FrameLayout.LayoutParams(panelWidth, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.END));
+        panel.animate().alpha(1f).translationX(0).setDuration(220).start();
+        close.setOnClickListener(v -> closeFoldSettingsPane());
+        getSupportFragmentManager().beginTransaction()
+                .setReorderingAllowed(true)
+                .replace(foldSettingsContainer.getId(), new StreamSettings.SettingsFragment(
+                        PreferenceConfiguration.readPreferences(this)))
+                .commit();
+    }
+
+    private void closeFoldSettingsPane() {
+        if (foldSettingsContainer != null) {
+            androidx.fragment.app.Fragment fragment = getSupportFragmentManager().findFragmentById(foldSettingsContainer.getId());
+            if (fragment != null) {
+                getSupportFragmentManager().beginTransaction().remove(fragment).commit();
+            }
+            View panel = (View) foldSettingsContainer.getParent();
+            ViewGroup root = (ViewGroup) panel.getParent();
+            root.removeView(panel);
+            if (foldSettingsScrim != null) {
+                root.removeView(foldSettingsScrim);
+                foldSettingsScrim = null;
+            }
+            foldSettingsContainer = null;
+        }
+    }
+
+    @Override
+    public void reloadSettings() {
+        if (foldSettingsContainer != null) {
+            getSupportFragmentManager().beginTransaction()
+                    .replace(foldSettingsContainer.getId(), new StreamSettings.SettingsFragment(
+                            PreferenceConfiguration.readPreferences(this)))
+                    .commitAllowingStateLoss();
+        }
+    }
+
+    @Override
+    public void onBackPressed() {
+        if (foldSettingsContainer != null) {
+            closeFoldSettingsPane();
+        } else {
+            super.onBackPressed();
+        }
     }
 
     @Override
@@ -393,6 +521,7 @@ public class PcView extends AppCompatActivity implements AdapterFragmentCallback
     protected void onStop() {
         super.onStop();
 
+        SpinnerDialog.closeDialogs(this);
         Dialog.closeDialogs();
     }
 
@@ -466,6 +595,55 @@ public class PcView extends AppCompatActivity implements AdapterFragmentCallback
         // startComputerUpdates() manages this and won't actual start polling until the activity
         // returns to the foreground.
         startComputerUpdates();
+    }
+
+    private void showComputerMenu(ComputerObject computer) {
+        if (computer == null) return;
+        stopComputerUpdates(false);
+        List<Integer> actions = new ArrayList<>();
+        List<String> labels = new ArrayList<>();
+        ComputerDetails details = computer.details;
+        if (details.state == ComputerDetails.State.OFFLINE || details.state == ComputerDetails.State.UNKNOWN) {
+            addPcMenuAction(actions, labels, WOL_ID, R.string.pcview_menu_send_wol);
+            addPcMenuAction(actions, labels, GAMESTREAM_EOL_ID, R.string.pcview_menu_eol);
+        } else if (details.pairState != PairState.PAIRED) {
+            addPcMenuAction(actions, labels, PAIR_ID_OTP, R.string.pcview_menu_pair_pc_otp);
+            addPcMenuAction(actions, labels, PAIR_ID, R.string.pcview_menu_pair_pc);
+            addPcMenuAction(actions, labels, details.nvidiaServer ? GAMESTREAM_EOL_ID : OPEN_MANAGEMENT_PAGE_ID,
+                    details.nvidiaServer ? R.string.pcview_menu_eol : R.string.pcview_menu_open_management_page);
+        } else {
+            if (details.runningGameId != 0) {
+                addPcMenuAction(actions, labels, RESUME_ID, R.string.applist_menu_resume);
+                addPcMenuAction(actions, labels, QUIT_ID, R.string.applist_menu_quit);
+            }
+            addPcMenuAction(actions, labels, details.nvidiaServer ? GAMESTREAM_EOL_ID : OPEN_MANAGEMENT_PAGE_ID,
+                    details.nvidiaServer ? R.string.pcview_menu_eol : R.string.pcview_menu_open_management_page);
+            addPcMenuAction(actions, labels, FULL_APP_LIST_ID, R.string.pcview_menu_app_list);
+        }
+        addPcMenuAction(actions, labels, TEST_NETWORK_ID, R.string.pcview_menu_test_network);
+        if (details.state == ComputerDetails.State.ONLINE && details.serverCert != null) {
+            addPcMenuAction(actions, labels, SPEED_TEST_ID, R.string.pcview_menu_speed_test);
+        }
+        if (details.serverCert != null) addPcMenuAction(actions, labels, BACKUP_PAIRING_ID, R.string.pcview_menu_backup_pairing);
+        addPcMenuAction(actions, labels, RESTORE_PAIRING_ID, R.string.pcview_menu_restore_pairing);
+        addPcMenuAction(actions, labels, DELETE_ID, R.string.pcview_menu_delete_pc);
+        addPcMenuAction(actions, labels, VIEW_DETAILS_ID, R.string.pcview_menu_details);
+
+        String state = details.state == ComputerDetails.State.ONLINE ? getString(R.string.pcview_menu_header_online) :
+                details.state == ComputerDetails.State.OFFLINE ? getString(R.string.pcview_menu_header_offline) :
+                        getString(R.string.pcview_menu_header_unknown);
+        CharSequence[] choices = labels.toArray(new CharSequence[0]);
+        MaterialAlertDialogBuilder builder = new MaterialAlertDialogBuilder(this)
+                .setTitle(details.name + "  •  " + state)
+                .setItems(choices, (dialog, which) -> performComputerAction(computer, actions.get(which)));
+        androidx.appcompat.app.AlertDialog dialog = builder.create();
+        dialog.setOnDismissListener(ignored -> startComputerUpdates());
+        dialog.show();
+    }
+
+    private void addPcMenuAction(List<Integer> ids, List<String> labels, int id, int label) {
+        ids.add(id);
+        labels.add(getString(label));
     }
 
     private void doPair(final ComputerDetails computer, String otp, String passphrase) {
@@ -734,7 +912,11 @@ public class PcView extends AppCompatActivity implements AdapterFragmentCallback
     public boolean onContextItemSelected(MenuItem item) {
         AdapterContextMenuInfo info = (AdapterContextMenuInfo) item.getMenuInfo();
         final ComputerObject computer = (ComputerObject) pcGridAdapter.getItem(info.position);
-        switch (item.getItemId()) {
+        return performComputerAction(computer, item.getItemId());
+    }
+
+    private boolean performComputerAction(final ComputerObject computer, int actionId) {
+        switch (actionId) {
             case PAIR_ID:
                 doPair(computer.details, null, null);
                 return true;
@@ -805,6 +987,10 @@ public class PcView extends AppCompatActivity implements AdapterFragmentCallback
                 ServerHelper.doNetworkTest(PcView.this);
                 return true;
 
+            case SPEED_TEST_ID:
+                doPcSpeedTest(computer);
+                return true;
+
             case GAMESTREAM_EOL_ID:
                 HelpLauncher.launchGameStreamEolFaq(PcView.this);
                 return true;
@@ -816,9 +1002,204 @@ public class PcView extends AppCompatActivity implements AdapterFragmentCallback
                 } else {
                     HelpLauncher.launchUrl(PcView.this, managementUrl);
                 }
+                return true;
+
+            case BACKUP_PAIRING_ID:
+                promptForBackupPassphrase(computer);
+                return true;
+
+            case RESTORE_PAIRING_ID:
+                pendingRestoreComputerUuid = computer.details.uuid;
+                Intent restoreIntent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+                restoreIntent.addCategory(Intent.CATEGORY_OPENABLE);
+                restoreIntent.setType("application/json");
+                startActivityForResult(restoreIntent, RESTORE_PC_BACKUP_REQUEST);
+                return true;
 
             default:
-                return super.onContextItemSelected(item);
+                return false;
+        }
+    }
+
+    private interface PassphraseCallback { void onPassphrase(String passphrase); }
+
+    private void promptForBackupPassphrase(ComputerObject computer) {
+        final String computerUuid = computer.details.uuid;
+        LinearLayout fields = new LinearLayout(this);
+        fields.setOrientation(LinearLayout.VERTICAL);
+        int horizontalPadding = Math.round(24 * getResources().getDisplayMetrics().density);
+        fields.setPadding(horizontalPadding, 0, horizontalPadding, 0);
+        EditText passphrase = new EditText(this);
+        passphrase.setSingleLine(true);
+        passphrase.setHint(R.string.paired_backup_passphrase_hint);
+        passphrase.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        EditText confirm = new EditText(this);
+        confirm.setSingleLine(true);
+        confirm.setHint(R.string.paired_backup_confirm_hint);
+        confirm.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        fields.addView(passphrase);
+        fields.addView(confirm);
+        new MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.paired_backup_create)
+                .setMessage(R.string.paired_backup_passphrase_explanation)
+                .setView(fields)
+                .setNegativeButton(android.R.string.cancel, null)
+                .setPositiveButton(android.R.string.ok, (dialog, which) -> {
+                    String value = passphrase.getText().toString();
+                    if (value.length() < 12) {
+                        Toast.makeText(this, R.string.paired_backup_passphrase_too_short, Toast.LENGTH_LONG).show();
+                    } else if (!value.equals(confirm.getText().toString())) {
+                        Toast.makeText(this, R.string.paired_backup_passphrase_mismatch, Toast.LENGTH_LONG).show();
+                    } else {
+                        pendingBackupPassphrase = value;
+                        Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+                        intent.addCategory(Intent.CATEGORY_OPENABLE);
+                        intent.setType("application/json");
+                        intent.putExtra(Intent.EXTRA_TITLE, "PyroWave-" + computer.details.name.replaceAll("[^A-Za-z0-9._-]", "_") + "-pairing.pwb");
+                        pendingBackupComputerUuid = computerUuid;
+                        startActivityForResult(intent, CREATE_PC_BACKUP_REQUEST);
+                    }
+                }).show();
+    }
+
+    private void promptForRestorePassphrase(byte[] backup, String computerUuid) {
+        EditText input = new EditText(this);
+        input.setSingleLine(true);
+        input.setHint(R.string.paired_backup_passphrase_hint);
+        input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        int padding = Math.round(24 * getResources().getDisplayMetrics().density);
+        LinearLayout container = new LinearLayout(this);
+        container.setPadding(padding, 0, padding, 0);
+        container.addView(input);
+        new MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.paired_backup_restore)
+                .setMessage(R.string.paired_restore_passphrase_explanation)
+                .setView(container)
+                .setNegativeButton(android.R.string.cancel, null)
+                .setPositiveButton(android.R.string.ok, (dialog, which) -> {
+                    try {
+                        PairedComputerBackup.Preview preview = PairedComputerBackup.preview(backup, input.getText().toString());
+                        if (!preview.containsComputer(computerUuid)) {
+                            showPairedBackupError(new IOException("This backup does not contain the selected PC."));
+                            return;
+                        }
+                        ComputerObject selected = findComputer(computerUuid);
+                        String name = selected == null ? computerUuid : selected.details.name;
+                        new MaterialAlertDialogBuilder(this)
+                                .setTitle(R.string.paired_restore_confirm_title)
+                                .setMessage(getString(R.string.paired_restore_one_pc_message, name))
+                                .setNegativeButton(android.R.string.cancel, null)
+                                .setPositiveButton(R.string.paired_restore_button, (confirmDialog, confirmWhich) -> {
+                                    try {
+                                        PairedComputerBackup.restore(this, preview, computerUuid);
+                                        new MaterialAlertDialogBuilder(this)
+                                                .setTitle(R.string.paired_restore_complete_title)
+                                                .setMessage(R.string.paired_restore_restart_message)
+                                                .setCancelable(false)
+                                                .setPositiveButton(android.R.string.ok, (done, doneWhich) -> {
+                                                    finishAffinity();
+                                                    android.os.Process.killProcess(android.os.Process.myPid());
+                                                }).show();
+                                    } catch (Exception e) { showPairedBackupError(e); }
+                                }).show();
+                    } catch (Exception e) { showPairedBackupError(e); }
+                }).show();
+    }
+
+    private ComputerObject findComputer(String uuid) {
+        for (int i = 0; i < pcGridAdapter.getCount(); i++) {
+            ComputerObject candidate = (ComputerObject) pcGridAdapter.getItem(i);
+            if (candidate.details.uuid.equals(uuid)) return candidate;
+        }
+        return null;
+    }
+
+    private void showPairedBackupError(Exception e) {
+        String message = e.getLocalizedMessage() == null ? e.getClass().getSimpleName() : e.getLocalizedMessage();
+        new MaterialAlertDialogBuilder(this).setTitle(R.string.paired_backup_error_title)
+                .setMessage(getString(R.string.paired_backup_error_message, message))
+                .setPositiveButton(android.R.string.ok, null).show();
+    }
+
+    private void doPcSpeedTest(ComputerObject computer) {
+        if (managerBinder == null) {
+            Toast.makeText(this, R.string.error_manager_not_running, Toast.LENGTH_LONG).show();
+            return;
+        }
+        if (computer.details.state != ComputerDetails.State.ONLINE || computer.details.activeAddress == null || computer.details.serverCert == null) {
+            Toast.makeText(this, R.string.pair_pc_offline, Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        final ComputerDetails selectedPc = computer.details;
+        final String pcName = selectedPc.name;
+        SpinnerDialog progress = SpinnerDialog.displayDialog(this,
+                getString(R.string.pcview_speed_test_title, pcName),
+                getString(R.string.pcview_speed_test_waiting), false);
+        new Thread(() -> {
+            double mbps = 0;
+            Exception failure = null;
+            try {
+                NvHTTP http = new NvHTTP(ServerHelper.getCurrentAddressFromComputer(selectedPc),
+                        selectedPc.httpsPort, managerBinder.getUniqueId(), selectedPc.serverCert,
+                        PlatformBinding.getCryptoProvider(PcView.this));
+                mbps = http.measureConnectionBandwidthMbps();
+            } catch (Exception e) {
+                failure = e;
+            } finally {
+                final double resultMbps = mbps;
+                final Exception resultFailure = failure;
+                runOnUiThread(() -> {
+                    progress.dismiss();
+                    if (isFinishing() || !inForeground) return;
+                    if (resultFailure != null) {
+                        String message = resultFailure.getLocalizedMessage();
+                        if (message == null || message.trim().isEmpty()) message = resultFailure.getClass().getSimpleName();
+                        new MaterialAlertDialogBuilder(PcView.this)
+                                .setTitle(R.string.pcview_speed_test_failed_title)
+                                .setMessage(getString(R.string.pcview_speed_test_failed_message, message))
+                                .setPositiveButton(android.R.string.ok, null).show();
+                    } else {
+                        new MaterialAlertDialogBuilder(PcView.this)
+                                .setTitle(getString(R.string.pcview_speed_test_title, pcName))
+                                .setMessage(getString(R.string.pcview_speed_test_result,
+                                        String.format(java.util.Locale.getDefault(), "%.1f", resultMbps)))
+                                .setPositiveButton(android.R.string.ok, null).show();
+                    }
+                });
+            }
+        }, "PC-speed-test").start();
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == CREATE_PC_BACKUP_REQUEST) {
+            if (resultCode == Activity.RESULT_OK && data != null && data.getData() != null) {
+                try (OutputStream output = getContentResolver().openOutputStream(data.getData(), "wt")) {
+                    if (output == null) throw new IOException("Could not write to the selected backup location");
+                    output.write(PairedComputerBackup.create(this, pendingBackupPassphrase, pendingBackupComputerUuid));
+                    Toast.makeText(this, R.string.paired_backup_saved, Toast.LENGTH_LONG).show();
+                } catch (Exception e) { showPairedBackupError(e); }
+            }
+            pendingBackupPassphrase = null;
+            pendingBackupComputerUuid = null;
+            return;
+        }
+        if (requestCode == RESTORE_PC_BACKUP_REQUEST && resultCode == Activity.RESULT_OK && data != null && data.getData() != null) {
+            String uuid = pendingRestoreComputerUuid;
+            pendingRestoreComputerUuid = null;
+            try (InputStream input = getContentResolver().openInputStream(data.getData());
+                 java.io.ByteArrayOutputStream output = new java.io.ByteArrayOutputStream()) {
+                if (input == null) throw new IOException("Could not read the selected backup");
+                byte[] buffer = new byte[8192];
+                int read;
+                while ((read = input.read(buffer)) != -1) {
+                    if (output.size() + read > 16 * 1024 * 1024) throw new IOException("Backup file is unexpectedly large");
+                    output.write(buffer, 0, read);
+                }
+                promptForRestorePassphrase(output.toByteArray(), uuid);
+            } catch (Exception e) { showPairedBackupError(e); }
         }
     }
 
@@ -899,7 +1280,7 @@ public class PcView extends AppCompatActivity implements AdapterFragmentCallback
                 if (computer.details.state == ComputerDetails.State.UNKNOWN ||
                     computer.details.state == ComputerDetails.State.OFFLINE) {
                     // Open the context menu if a PC is offline or refreshing
-                    openContextMenu(arg1);
+                    showComputerMenu(computer);
                 } else if (computer.details.pairState != PairState.PAIRED) {
                     // Pair an unpaired machine by default
                     doPair(computer.details, null, null);
@@ -908,8 +1289,11 @@ public class PcView extends AppCompatActivity implements AdapterFragmentCallback
                 }
             }
         });
+        listView.setOnItemLongClickListener((parent, view, position, id) -> {
+            showComputerMenu((ComputerObject) pcGridAdapter.getItem(position));
+            return true;
+        });
         UiHelper.applyStatusBarPadding(listView);
-        registerForContextMenu(listView);
     }
 
     public static class ComputerObject {

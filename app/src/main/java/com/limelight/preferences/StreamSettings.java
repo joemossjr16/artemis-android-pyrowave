@@ -42,6 +42,7 @@ import android.util.Log;
 import android.util.Range;
 import android.view.Display;
 import android.view.DisplayCutout;
+import android.view.Gravity;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -66,6 +67,7 @@ import com.limelight.binding.input.virtual_controller.keyboard.KeyBoardControlle
 import com.limelight.binding.video.MediaCodecHelper;
 import com.limelight.utils.Dialog;
 import com.limelight.utils.FileUriUtils;
+import com.limelight.utils.M3Motion;
 import com.limelight.utils.PerformanceDataTracker;
 import com.limelight.utils.UiHelper;
 import org.json.JSONObject;
@@ -77,7 +79,7 @@ import java.util.Arrays;
 import java.util.Iterator;
 import java.util.Map;
 
-public class StreamSettings extends AppCompatActivity {
+public class StreamSettings extends AppCompatActivity implements StreamSettingsHost {
     private PreferenceConfiguration previousPrefs;
     private int previousDisplayPixelCount;
 
@@ -86,7 +88,8 @@ public class StreamSettings extends AppCompatActivity {
     // HACK for Android 9
     static DisplayCutout displayCutoutP;
 
-    void reloadSettings() {
+    @Override
+    public void reloadSettings() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             Display.Mode mode = getActiveDisplay(StreamSettings.this, previousPrefs).getMode();
             previousDisplayPixelCount = mode.getPhysicalWidth() * mode.getPhysicalHeight();
@@ -110,6 +113,8 @@ public class StreamSettings extends AppCompatActivity {
         UiHelper.setLocale(this);
 
         setContentView(R.layout.activity_stream_settings);
+        M3Motion.enter(findViewById(android.R.id.content), 0);
+        findViewById(R.id.settingsBackButton).setOnClickListener(v -> finish());
 
 //        UiHelper.notifyNewRootView(this);
     }
@@ -332,14 +337,18 @@ public class StreamSettings extends AppCompatActivity {
         public View onCreateView(@NonNull LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
             View view = super.onCreateView(inflater, container, savedInstanceState);
             UiHelper.applyStatusBarPadding(view);
+            view.post(() -> {
+                setDivider(null);
+                setDividerHeight(0);
+            });
 
             Context context = inflater.getContext();
             float density = getResources().getDisplayMetrics().density;
             boolean amoledEnabled = prevPrefConfig != null && prevPrefConfig.amoledTheme;
 
-            int screenBgColor = amoledEnabled ? Color.BLACK : Color.parseColor("#1A1A1A");
-            int cardBgColor = amoledEnabled ? Color.parseColor("#141414") : Color.parseColor("#2A2A2A");
-            int accentColor = amoledEnabled ? Color.parseColor("#B388FF") : Color.parseColor("#FF4081");
+            int screenBgColor = amoledEnabled ? Color.BLACK : ContextCompat.getColor(context, R.color.m3Background);
+            int cardBgColor = amoledEnabled ? Color.parseColor("#141414") : ContextCompat.getColor(context, R.color.m3SurfaceHigh);
+            int accentColor = ContextCompat.getColor(context, R.color.m3Primary);
 
             LinearLayout wrapper = new LinearLayout(context);
             wrapper.setOrientation(LinearLayout.VERTICAL);
@@ -351,21 +360,23 @@ public class StreamSettings extends AppCompatActivity {
             searchBg.setShape(GradientDrawable.RECTANGLE);
             searchBg.setCornerRadius(28 * density);
             searchBg.setColor(cardBgColor);
-            searchBg.setStroke(Math.round(density), accentColor);
             searchContainer.setBackground(searchBg);
 
             int marginH = Math.round(16 * density);
             LinearLayout.LayoutParams containerParams = new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                    ViewGroup.LayoutParams.MATCH_PARENT, Math.round(56 * density));
             containerParams.setMargins(marginH, Math.round(12 * density), marginH, Math.round(4 * density));
 
             EditText searchBox = new EditText(context);
             searchBox.setHint(R.string.hint_search_settings);
             searchBox.setSingleLine(true);
             searchBox.setInputType(InputType.TYPE_CLASS_TEXT);
+            searchBox.setGravity(Gravity.CENTER_VERTICAL | Gravity.START);
             searchBox.setBackground(null);
-            searchBox.setTextColor(Color.WHITE);
-            searchBox.setHintTextColor(Color.parseColor("#9E9E9E"));
+            searchBox.setTextSize(16);
+            searchBox.setIncludeFontPadding(false);
+            searchBox.setTextColor(ContextCompat.getColor(context, R.color.m3OnSurface));
+            searchBox.setHintTextColor(ContextCompat.getColor(context, R.color.m3OnSurfaceVariant));
             int innerPadH = Math.round(16 * density);
             int innerPadV = Math.round(10 * density);
             searchBox.setPadding(innerPadH, innerPadV, innerPadH, innerPadV);
@@ -392,7 +403,8 @@ public class StreamSettings extends AppCompatActivity {
             });
 
             searchContainer.addView(searchBox, new FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT,
+                    Gravity.CENTER));
 
             wrapper.addView(searchContainer, containerParams);
             wrapper.addView(view, new LinearLayout.LayoutParams(
@@ -453,6 +465,7 @@ public class StreamSettings extends AppCompatActivity {
         public void initializePreferences() {
             addPreferencesFromResource(R.xml.preferences);
             PreferenceScreen screen = getPreferenceScreen();
+            applyMaterialPreferenceLayouts(screen);
 
             AppCompatActivity activity = (AppCompatActivity) requireActivity();
             PackageManager pm = activity.getPackageManager();
@@ -1076,6 +1089,24 @@ public class StreamSettings extends AppCompatActivity {
             }
         }
 
+        private void applyMaterialPreferenceLayouts(PreferenceGroup group) {
+            if (group == null) return;
+            for (int i = 0; i < group.getPreferenceCount(); i++) {
+                Preference preference = group.getPreference(i);
+                preference.setIconSpaceReserved(false);
+                if (preference instanceof PreferenceCategory) {
+                    preference.setLayoutResource(R.layout.m3_preference_category);
+                    applyMaterialPreferenceLayouts((PreferenceGroup) preference);
+                } else {
+                    preference.setLayoutResource(R.layout.m3_preference);
+                    if (preference instanceof androidx.preference.CheckBoxPreference) {
+                        preference.setWidgetLayoutResource(R.layout.m3_preference_widget_checkbox);
+                    }
+                }
+            }
+
+        }
+
         private void removeEntryFromListAndSetValue(String resolutionPrefString, String entryToRemove, String nextDefault) {
             removeValue(resolutionPrefString, entryToRemove, new Runnable() {
                 @Override
@@ -1102,9 +1133,9 @@ public class StreamSettings extends AppCompatActivity {
                 @Override
                 public void run() {
                     // Ensure the activity is still open when this timeout expires
-                    StreamSettings settingsActivity = (StreamSettings) SettingsFragment.this.getActivity();
-                    if (settingsActivity != null) {
-                        settingsActivity.reloadSettings();
+                    Activity activity = SettingsFragment.this.getActivity();
+                    if (activity instanceof StreamSettingsHost) {
+                        ((StreamSettingsHost) activity).reloadSettings();
                     }
                 }
             }, 500);

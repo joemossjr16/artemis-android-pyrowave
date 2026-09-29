@@ -187,6 +187,7 @@ public class MediaCodecDecoderRenderer extends VideoDecoderRenderer implements C
     private VideoStats activeWindowVideoStats;
     private VideoStats lastWindowVideoStats;
     private VideoStats globalVideoStats;
+    private volatile float recentPacketLossPercent = Float.NaN;
 
     private long lastTimestampUs;
     private int lastFrameNumber;
@@ -841,7 +842,10 @@ public class MediaCodecDecoderRenderer extends VideoDecoderRenderer implements C
      * Android then scales the complete buffer into the smaller View. Fitting the new stream's
      * aspect into the old buffer leaves black bands at the top and bottom of the split.
      */
-    public int reinitAtResolution(int width, int height) {
+    // Resolution changes are acknowledged from the connection/UI path while decode units
+    // continue arriving on the native receive thread. Keep that thread out of the old
+    // MediaCodec input buffers while setup/cleanup releases and replaces the decoder.
+    public synchronized int reinitAtResolution(int width, int height) {
         this.initialWidth = invertResolution ? height : width;
         this.initialHeight = invertResolution ? width : height;
 
@@ -863,7 +867,7 @@ public class MediaCodecDecoderRenderer extends VideoDecoderRenderer implements C
     }
 
     @Override
-    public int setup(int format, int width, int height, int redrawRate) {
+    public synchronized int setup(int format, int width, int height, int redrawRate) {
         this.targetFps = (redrawRate > 0 ? redrawRate : 60);
         this.initialWidth = invertResolution ? height : width;
         this.initialHeight = invertResolution ? width : height;
@@ -1748,7 +1752,17 @@ public class MediaCodecDecoderRenderer extends VideoDecoderRenderer implements C
     }
 
     @Override
-    public void cleanup() {
+    public synchronized void cleanup() {
+        // MediaCodec invalidates its DirectByteBuffers when it is released. A resolution
+        // change can leave a partially assembled access unit in nextInputBuffer; discard
+        // that reference before the next submission tries to reuse it with the new codec.
+        nextInputBuffer = null;
+        nextInputBufferIndex = -1;
+        legacyInputBuffers = null;
+        outputBufferQueue.clear();
+        lastFrameNumber = 0;
+        lastTimestampUs = 0;
+
         if (pyroWaveRenderer != null) {
             pyroWaveRenderer.cleanup();
             pyroWaveRenderer = null;
@@ -1857,7 +1871,7 @@ public class MediaCodecDecoderRenderer extends VideoDecoderRenderer implements C
 
     @SuppressWarnings("deprecation")
     @Override
-    public int submitDecodeUnit(byte[] decodeUnitData, int decodeUnitLength, int decodeUnitType,
+    public synchronized int submitDecodeUnit(byte[] decodeUnitData, int decodeUnitLength, int decodeUnitType,
                                 int frameNumber, int frameType, char frameHostProcessingLatency,
                                 long receiveTimeMs, long enqueueTimeMs) {
         if (stopping) {
@@ -1890,6 +1904,8 @@ public class MediaCodecDecoderRenderer extends VideoDecoderRenderer implements C
                 VideoStats lastTwo = new VideoStats();
                 lastTwo.add(lastWindowVideoStats);
                 lastTwo.add(activeWindowVideoStats);
+                recentPacketLossPercent = lastTwo.totalFrames == 0 ? Float.NaN :
+                        (float) lastTwo.framesLost / lastTwo.totalFrames * 100f;
                 VideoStatsFps fps = lastTwo.getFps();
                 String decoder;
 
@@ -2404,6 +2420,10 @@ public class MediaCodecDecoderRenderer extends VideoDecoderRenderer implements C
             return 0;
         }
         return (int)(globalVideoStats.totalTimeMs / globalVideoStats.totalFramesReceived);
+    }
+
+    public float getRecentPacketLossPercent() {
+        return recentPacketLossPercent;
     }
 
     public int getAverageDecoderLatency() {

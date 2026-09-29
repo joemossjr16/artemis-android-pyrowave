@@ -7,6 +7,7 @@ package com.limelight.binding.input.virtual_controller;
 import android.app.Activity;
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.content.res.Configuration;
 import android.util.DisplayMetrics;
 
 import com.limelight.R;
@@ -19,6 +20,15 @@ import org.json.JSONObject;
 public class VirtualControllerConfigurationLoader {
     public static final String OSC_PREFERENCE = "OSC";
     private static final String OSC_FOLD_SPLIT_PREFERENCE = "OSC_FOLD_SPLIT";
+
+    private static String getOrientationPreferenceName(String baseName, Context context) {
+        if (context.getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE) {
+            return baseName + "_LANDSCAPE";
+        }
+        // Keep the existing preference names as the portrait profiles so all saved layouts
+        // remain available without migration or overwriting them.
+        return baseName;
+    }
 
     private static int getPercent(
             int percent,
@@ -36,9 +46,16 @@ public class VirtualControllerConfigurationLoader {
             final Context context) {
 
         DigitalPad digitalPad = new DigitalPad(controller, context);
+        final int[] lastHapticDirection = {DigitalPad.DIGITAL_PAD_DIRECTION_NO_DIRECTION};
         digitalPad.addDigitalPadListener(new DigitalPad.DigitalPadListener() {
             @Override
             public void onDirectionChange(int direction) {
+                if (direction != DigitalPad.DIGITAL_PAD_DIRECTION_NO_DIRECTION &&
+                        direction != lastHapticDirection[0]) {
+                    controller.performControllerHaptic();
+                }
+                lastHapticDirection[0] = direction;
+
                 VirtualController.ControllerInputContext inputContext =
                         controller.getControllerInputContext();
 
@@ -414,7 +431,8 @@ public class VirtualControllerConfigurationLoader {
 
     public static void saveProfile(final VirtualController controller,
                                    final Context context) {
-        String preferenceName = controller.isFoldSplitActive() ? OSC_FOLD_SPLIT_PREFERENCE : OSC_PREFERENCE;
+        String preferenceName = getOrientationPreferenceName(
+                controller.isFoldSplitActive() ? OSC_FOLD_SPLIT_PREFERENCE : OSC_PREFERENCE, context);
         SharedPreferences.Editor prefEditor = context.getSharedPreferences(preferenceName, Activity.MODE_PRIVATE).edit();
 
         for (VirtualControllerElement element : controller.getElements()) {
@@ -430,15 +448,16 @@ public class VirtualControllerConfigurationLoader {
     }
 
     public static void loadFromPreferences(final VirtualController controller, final Context context) {
-        loadFromPreferences(controller, context, OSC_PREFERENCE);
+        loadFromPreferences(controller, context, getOrientationPreferenceName(OSC_PREFERENCE, context));
     }
 
     public static void loadFoldSplitProfile(final VirtualController controller, final Context context) {
-        SharedPreferences pref = context.getSharedPreferences(OSC_FOLD_SPLIT_PREFERENCE, Activity.MODE_PRIVATE);
+        String preferenceName = getOrientationPreferenceName(OSC_FOLD_SPLIT_PREFERENCE, context);
+        SharedPreferences pref = context.getSharedPreferences(preferenceName, Activity.MODE_PRIVATE);
         if (pref.getAll().isEmpty()) {
             return;
         }
-        loadFromPreferences(controller, context, OSC_FOLD_SPLIT_PREFERENCE);
+        loadFromPreferences(controller, context, preferenceName);
     }
 
     private static void loadFromPreferences(final VirtualController controller,

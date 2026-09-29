@@ -2,4 +2,19 @@
 <resources>
     <color name="profileAccent">#FF4081</color>
     <color name="amoledAccent">#B388FF</color>
+    <color name="m3Background">#141218</color>
+    <color name="m3Surface">#1D1A22</color>
+    <color name="m3SurfaceContainer">#26222C</color>
+    <color name="m3SurfaceHigh">#302B37</color>
+    <color name="m3Primary">#D7BCFF</color>
+    <color name="m3OnPrimary">#32145B</color>
+    <color name="m3PrimaryContainer">#493366</color>
+    <color name="m3OnPrimaryContainer">#F0DBFF</color>
+    <color name="m3Secondary">#CBBDE2</color>
+    <color name="m3OnSurface">#F2EDF7</color>
+    <color name="m3OnSurfaceVariant">#CEC4D7</color>
+    <color name="m3Outline">#948B9D</color>
+    <color name="m3TertiaryContainer">#294549</color>
+    <color name="m3OnTertiaryContainer">#B8EDE7</color>
+    <color name="m3Online">#9DD9B7</color>
 </resources>
